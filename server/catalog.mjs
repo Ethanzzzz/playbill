@@ -176,8 +176,21 @@ export function rebuildCatalog(state, txs) {
   }
 
   // ---------- 5. 聚合 series ----------
+  state.catalog = catalog;
+  rebuildSeries(state);
+  state.catalogUpdatedAt = new Date().toISOString();
+
+  return {
+    catalog: catalog.length,
+    series: state.series.length,
+    paid: rows.filter((r) => r.price > 0).length,
+  };
+}
+
+/** 由 catalog 重新聚合 series（不涉及网络，可单独调用） */
+export function rebuildSeries(state) {
   const bySeries = new Map();
-  for (const c of catalog) {
+  for (const c of state.catalog || []) {
     if (!bySeries.has(c.series)) {
       bySeries.set(c.series, { key: c.series, label: c.seriesLabel || c.series, products: [], totalSpent: 0 });
     }
@@ -188,21 +201,13 @@ export function rebuildCatalog(state, txs) {
       productId: c.productId,
       spent: c.totalSpent || 0,
       purchases: c.purchases || [],
-      basePrice: c.store?.basePrice ?? null,
-      currentPrice: c.store?.discountedPrice ?? null,
+      basePrice: c.store?.price?.basePrice ?? c.store?.basePrice ?? null,
+      currentPrice: c.store?.price?.discountedPrice ?? c.store?.discountedPrice ?? null,
       image: c.image || null,
       bundle: c.bundle || null,
     });
     s.totalSpent += c.totalSpent || 0;
   }
-
-  state.catalog = catalog;
   state.series = [...bySeries.values()].sort((a, b) => b.totalSpent - a.totalSpent);
-  state.catalogUpdatedAt = new Date().toISOString();
-
-  return {
-    catalog: catalog.length,
-    series: state.series.length,
-    paid: rows.filter((r) => r.price > 0).length,
-  };
+  return state.series.length;
 }

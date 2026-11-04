@@ -7,7 +7,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import * as psn from "./psn.mjs";
 import { csvToTransactions } from "./csv.mjs";
-import { rebuildCatalog } from "./catalog.mjs";
+import { rebuildCatalog, rebuildSeries } from "./catalog.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -501,6 +501,11 @@ async function snapshotPrices(state) {
       if (!pid) break;
       const arr = history[pid] || (history[pid] = []);
       const already = arr.some((x) => x.d === today);
+      // 今天已记录且有封面 → 直接跳过，避免重复同步时反复请求
+      if (already && byPid.get(pid)?.image) {
+        skipped++;
+        continue;
+      }
       try {
         const p = await psn.fetchCtaPrice(pid, state.webCookies || {});
         if (p && (p.price != null || p.base != null)) {
@@ -526,6 +531,14 @@ async function snapshotPrices(state) {
             g.currentPriceAt = today;
             g.priceSource = "store-gql";
           }
+          // 缺封面的，顺手从商店容器补一张
+          if (c && !c.image) {
+            const img = await psn.fetchStoreImage(pid).catch(() => null);
+            if (img) {
+              c.image = img;
+              if (g && !g.cover) g.cover = img;
+            }
+          }
           if (already) {
             skipped++;
           } else {
@@ -542,6 +555,7 @@ async function snapshotPrices(state) {
     }
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
+  rebuildSeries(state); // 把新补的封面/现价同步到 series
   saveHistory(history);
   saveState(state);
   return { date: today, total: ids.length, added, skipped, failed };

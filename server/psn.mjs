@@ -273,8 +273,26 @@ function pickTransactionArray(data) {
  * 商店现价（公开店铺接口，非账号接口）。
  * 失败返回 null，前端可用手动价格。
  */
-export async function fetchStorePrice(productId, country = "HK", lang = "zh") {
+/** 从商店容器拿一张封面图（DLC / 捆绑包也有） */
+export async function fetchStoreImage(productId, country = "HK", lang = "zh") {
   if (!productId) return null;
+  const url = `https://store.playstation.com/store/api/chihiro/00_09_000/container/${country}/${lang}/999/${encodeURIComponent(
+    productId,
+  )}`;
+  try {
+    const res = await req(url, { timeout: 12000 });
+    if (!res.ok) return null;
+    const txt = await res.text();
+    if (!txt.trim()) return null;
+    const d = JSON.parse(txt);
+    const img = (d.images || []).find((x) => x && x.url);
+    return img ? img.url : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchStorePrice(productId, country = "HK", lang = "zh") {  if (!productId) return null;
   const url = `https://store.playstation.com/store/api/chihiro/00_09_000/container/${country}/${lang}/999/${encodeURIComponent(
     productId,
   )}`;

@@ -145,7 +145,7 @@ function renderStartGuide(box) {
     ),
   );
   steps.appendChild(
-    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期，同时更新商店现价（约 30 秒）", false, {
+    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期，同时补全商店现价与封面（首次 1-2 分钟）", false, {
       label: "同步交易",
       fn: () => syncTx(),
     }),
@@ -509,18 +509,37 @@ function renderSeries(box) {
   }
 }
 
-function childItem(name, note, priceText, image) {
-  const bi = el("div", "bitem");
-  const bt = el("span", "bthumb");
+function fillThumb(node, name, image, kind) {
+  node.innerHTML = "";
+  node.classList.remove("plus", "wallet");
   if (image) {
     const im = new Image();
     im.src = image;
     im.alt = "";
-    im.onerror = () => { im.remove(); bt.textContent = (name || "?").slice(0, 1).toUpperCase(); };
-    bt.appendChild(im);
-  } else {
-    bt.textContent = (name || "?").slice(0, 1).toUpperCase();
+    im.onerror = () => {
+      im.remove();
+      node.textContent = (name || "?").slice(0, 1).toUpperCase();
+    };
+    node.appendChild(im);
+    return;
   }
+  if (kind === "subscription") {
+    node.classList.add("plus");
+    node.textContent = "PS+";
+    return;
+  }
+  if (kind === "wallet") {
+    node.classList.add("wallet");
+    node.textContent = "¥";
+    return;
+  }
+  node.textContent = (name || "?").slice(0, 1).toUpperCase();
+}
+
+function childItem(name, note, priceText, image, kind) {
+  const bi = el("div", "bitem");
+  const bt = el("span", "bthumb");
+  fillThumb(bt, name, image, kind);
   bi.appendChild(bt);
   bi.appendChild(el("span", "bn", name));
   bi.appendChild(el("span", "ba", note || ""));
@@ -545,15 +564,7 @@ function productRow(p, family = []) {
   const row = el("div", "prow");
 
   const thumb = el("div", "thumb");
-  if (p.image) {
-    const img = new Image();
-    img.src = p.image;
-    img.alt = "";
-    img.onerror = () => { img.remove(); thumb.textContent = (p.name || "?").slice(0, 1).toUpperCase(); };
-    thumb.appendChild(img);
-  } else {
-    thumb.textContent = (p.name || "?").slice(0, 1).toUpperCase();
-  }
+  fillThumb(thumb, p.name, p.image, p.kind);
   row.appendChild(thumb);
 
   const info = el("div", "pinfo");
@@ -625,6 +636,7 @@ function productRow(p, family = []) {
             f.grantedBy ? `随「${(f.grantedByName || "").slice(0, 16)}」获得` : KIND_LABEL[f.kind] || "",
             f.spent > 0 ? fmt(f.spent, cur()) : "—",
             f.image,
+            f.kind,
           ),
         );
       }
@@ -640,6 +652,7 @@ function productRow(p, family = []) {
             it.name,
             it.allocated != null ? `分摊 ${fmt(it.allocated, cur())}` : "",
             it.currentPrice ? fmt(it.currentPrice, cur()) : "—",
+            null,
             null,
           ),
         );
@@ -666,7 +679,7 @@ async function doSync(withPrices) {
 async function syncTx() {
   const btn = $("btnSyncTx");
   btn.disabled = true;
-  toast("正在同步交易并更新商店现价，约 30 秒…", 60000);
+  toast("正在同步交易并更新商店现价，首次约 1-2 分钟…", 180000);
   try {
     const r = await api("/api/sync/transactions", { method: "POST", body: "{}" });
     const extra = r.priced ? ` / 现价 ${r.priced.updated} 个` : "";
