@@ -7,6 +7,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import * as psn from "./psn.mjs";
 import { csvToTransactions } from "./csv.mjs";
+import { rebuildCatalog } from "./catalog.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -699,6 +700,8 @@ async function handleApi(req, res, url) {
       const txs = await psn.fetchTransactionHistory(c);
       const paid = psn.extractPaidPurchases(txs);
       const merged = mergePaidPurchases(state, paid);
+      // 关键：把交易重新整理成 catalog / series，否则前端拿不到任何图表数据
+      const built = rebuildCatalog(state, txs);
       state.lastTxSync = new Date().toISOString();
       state.lastSync = state.lastTxSync;
       state.lastSyncNote = `交易 ${txs.length} 条，付费 ${paid.length} 笔`;
@@ -709,6 +712,7 @@ async function handleApi(req, res, url) {
         transactions: txs.length,
         paid: paid.length,
         ...merged,
+        ...built,
         total: Number(total.toFixed(2)),
       });
     } catch (e) {
