@@ -484,6 +484,10 @@ async function snapshotPrices(state) {
   const today = new Date().toISOString().slice(0, 10);
   const entries = (state.catalog || []).filter((c) => c.productId);
   const byPid = new Map(entries.map((c) => [c.productId, c]));
+  const gameByPid = new Map();
+  for (const g of state.games || []) {
+    if (g.productId) gameByPid.set(g.productId, g);
+  }
   const ids = [...byPid.keys()];
 
   let added = 0;
@@ -513,6 +517,14 @@ async function snapshotPrices(state) {
               isFree: p.isFree,
             };
             c.store.checkedAt = today;
+          }
+          // 同步到游戏库，总览的「当前价值 / 累计省下」用的是这里
+          const g = gameByPid.get(pid);
+          if (g) {
+            if (p.price != null) g.currentPrice = p.price;
+            if (p.base != null) g.currentBasePrice = p.base;
+            g.currentPriceAt = today;
+            g.priceSource = "store-gql";
           }
           if (already) {
             skipped++;
@@ -702,6 +714,11 @@ async function handleApi(req, res, url) {
       const merged = mergePaidPurchases(state, paid);
       // 关键：把交易重新整理成 catalog / series，否则前端拿不到任何图表数据
       const built = rebuildCatalog(state, txs);
+      // 顺便刷新商店现价（「当前价值 / 累计省下」依赖它）
+      let priced = null;
+      try {
+        priced = await snapshotPrices(state);
+      } catch {}
       state.lastTxSync = new Date().toISOString();
       state.lastSync = state.lastTxSync;
       state.lastSyncNote = `交易 ${txs.length} 条，付费 ${paid.length} 笔`;
@@ -713,8 +730,19 @@ async function handleApi(req, res, url) {
         paid: paid.length,
         ...merged,
         ...built,
+        priced: priced ? { updated: priced.added + priced.skipped, failed: priced.failed } : null,
         total: Number(total.toFixed(2)),
       });
+    } catch (e) {
+      return json(res, 400, { error: String(e.message || e) });
+    }
+  }
+
+  if (p === "/api/prices/refresh" && method === "POST") {
+    try {
+      const r = await snapshotPrices(state);
+      saveState(state);
+      return json(res, 200, { ok: true, ...r });
     } catch (e) {
       return json(res, 400, { error: String(e.message || e) });
     }

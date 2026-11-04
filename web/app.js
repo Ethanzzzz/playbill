@@ -145,7 +145,7 @@ function renderStartGuide(box) {
     ),
   );
   steps.appendChild(
-    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期 —— 之后所有图表才会出现", false, {
+    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期，同时更新商店现价（约 30 秒）", false, {
       label: "同步交易",
       fn: () => syncTx(),
     }),
@@ -666,12 +666,32 @@ async function doSync(withPrices) {
 async function syncTx() {
   const btn = $("btnSyncTx");
   btn.disabled = true;
+  toast("正在同步交易并更新商店现价，约 30 秒…", 60000);
   try {
     const r = await api("/api/sync/transactions", { method: "POST", body: "{}" });
-    toast(`交易同步：${r.transactions} 条 / 付费 ${r.paid} 笔 / 合计 ${fmt(r.total, cur())}`, 6000);
+    const extra = r.priced ? ` / 现价 ${r.priced.updated} 个` : "";
+    toast(`交易同步：${r.transactions} 条 / 付费 ${r.paid} 笔 / 合计 ${fmt(r.total, cur())}${extra}`, 6000);
     await load();
   } catch (e) { toast("同步交易失败：" + e.message, 7000); }
   finally { btn.disabled = false; }
+}
+
+async function refreshPrices() {
+  const btn = $("btnRefreshPrices");
+  if (!btn) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = "更新中…";
+  try {
+    const r = await api("/api/prices/refresh", { method: "POST", body: "{}" });
+    toast(`现价已更新：成功 ${r.added + r.skipped} 个，失败 ${r.failed} 个`, 5000);
+    await load();
+  } catch (e) {
+    toast("更新失败：" + e.message, 6000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
 }
 function openModal(id) { $(id).hidden = false; }
 function closeModal(id) { $(id).hidden = true; }
@@ -818,6 +838,8 @@ function bind() {
   $("btnSyncTx").onclick = syncTx;
   $("btnSettings").onclick = openSettings;
   $("btnSaveSettings").onclick = saveSettings;
+  const rp = $("btnRefreshPrices");
+  if (rp) rp.onclick = refreshPrices;
   $("btnLogin").onclick = () => openModal("loginModal");
   $("btnDoLogin").onclick = doLogin;
   $("btnLogout").onclick = doLogout;
