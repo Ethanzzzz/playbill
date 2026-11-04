@@ -838,6 +838,80 @@ textarea { resize: vertical; }
   to { opacity: 1; transform: none; }
 }
 
+/* ---------- 首次使用引导 ---------- */
+.start-steps {
+  margin-top: 30px;
+  border-top: 1px solid var(--ink);
+}
+.start-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+  align-items: start;
+}
+.start-step .sn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--ink);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.start-step.done .sn {
+  background: var(--ink);
+  color: var(--paper);
+}
+.start-step .stt {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.start-step.done .stt {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.start-step .std {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.65;
+}
+.start-step .st button { margin-top: 9px; }
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.gcard { min-width: 0; }
+.gcover {
+  aspect-ratio: 1 / 1;
+  background: var(--wash);
+  border: 1px solid var(--rule);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 20px;
+  color: var(--faint);
+}
+.gcover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gname {
+  font-size: 10.5px;
+  color: var(--ink-2);
+  margin-top: 6px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 1080px) {
   :root { --gutter: 28px; --rail-w: 236px; }

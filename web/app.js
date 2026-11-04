@@ -94,10 +94,103 @@ function renderDetail() {
   else renderSeries(box);
 }
 
+/* ================= 首次使用引导 ================= */
+function renderStartGuide(box) {
+  const games = STATE.games || [];
+  const hasToken = Boolean(STATE.hasToken);
+  const hasGames = games.length > 0;
+  const hasCookies = Boolean(STATE.hasCookies);
+
+  const head = el("div", "dash-head");
+  head.appendChild(el("div", "kicker", "开始使用"));
+  head.appendChild(el("h2", null, hasGames ? "还差最后一步" : "先把数据同步进来"));
+  head.appendChild(
+    el(
+      "p",
+      "lede",
+      hasGames
+        ? `游戏库已经拿到 ${games.length} 个条目。但金额、系列、图表都来自「交易记录」，还需要再同步一次。`
+        : "金额、系列、历史价格全部来自你的 PSN 交易记录。按下面四步走一遍，之后就都是自动的。",
+    ),
+  );
+  box.appendChild(head);
+
+  const steps = el("div", "start-steps");
+  const mkStep = (n, title, desc, done, action) => {
+    const d = el("div", "start-step" + (done ? " done" : ""));
+    d.appendChild(el("div", "sn", done ? "✓" : String(n)));
+    const body = el("div", "st");
+    body.appendChild(el("div", "stt", title));
+    body.appendChild(el("div", "std", desc));
+    if (action && !done) {
+      const b = el("button", "small", action.label);
+      b.onclick = action.fn;
+      body.appendChild(b);
+    }
+    d.appendChild(body);
+    return d;
+  };
+
+  steps.appendChild(mkStep(1, "登录账号", hasToken ? "已完成" : "点右上角头像，粘贴 npsso", hasToken, hasToken ? null : { label: "去登录", fn: () => openModal("loginModal") }));
+  steps.appendChild(mkStep(2, "同步游戏库", hasGames ? `已完成，共 ${games.length} 个条目` : "拉取你拥有的游戏与封面", hasGames, hasGames ? null : { label: "同步游戏", fn: () => doSync(false) }));
+  steps.appendChild(
+    mkStep(
+      3,
+      "抓取浏览器 Cookie",
+      hasCookies
+        ? "已完成"
+        : "交易接口需要网页 Cookie。双击程序文件夹里的「抓取Cookie.bat」（需先用调试端口启动 Edge）",
+      hasCookies,
+      null,
+    ),
+  );
+  steps.appendChild(
+    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期 —— 之后所有图表才会出现", false, {
+      label: "同步交易",
+      fn: () => syncTx(),
+    }),
+  );
+  box.appendChild(steps);
+
+  if (hasGames) {
+    const t = el("div", "section-title");
+    t.appendChild(document.createTextNode("已同步的游戏"));
+    t.appendChild(el("span", "n", String(games.length)));
+    box.appendChild(t);
+    const grid = el("div", "game-grid");
+    for (const g of games.slice(0, 30)) {
+      const c = el("div", "gcard");
+      const th = el("div", "gcover");
+      if (g.cover) {
+        const im = new Image();
+        im.src = g.cover;
+        im.alt = "";
+        im.onerror = () => { im.remove(); th.textContent = (g.name || "?").slice(0, 1); };
+        th.appendChild(im);
+      } else {
+        th.textContent = (g.name || "?").slice(0, 1);
+      }
+      c.appendChild(th);
+      c.appendChild(el("div", "gname", g.name || "未知"));
+      c.title = g.name || "";
+      grid.appendChild(c);
+    }
+    box.appendChild(grid);
+    if (games.length > 30) {
+      box.appendChild(el("p", "hint", `仅显示前 30 个，共 ${games.length} 个`));
+    }
+  }
+}
+
 /* ================= 总览 ================= */
 function renderOverview(box) {
   const games = STATE.games || [];
   const catalog = STATE.catalog || [];
+  // 没有交易记录时，金额/系列/图表都无从谈起，直接给引导页而不是空白
+  if (!catalog.length) {
+    renderStartGuide(box);
+    return;
+  }
   const totalSpent = games.reduce((s, g) => s + (Number(g.purchasePrice) || 0), 0);
   const owned = games.filter((g) => g.purchasePrice > 0);
   const nowValue = owned.reduce((s, g) => s + (Number(g.currentPrice) || 0), 0);
