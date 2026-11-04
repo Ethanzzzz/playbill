@@ -157,6 +157,10 @@ PSN 收藏档案 已启动
 
 ### 5.2 用调试模式启动 Edge
 
+> **绿色版用户**：直接双击文件夹里的 **`启动浏览器.bat`**，它会自动用调试模式打开 Edge 并进入商店首页。然后跳到 5.3。
+
+源码运行的用户手动执行：
+
 ```powershell
 & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222
 ```

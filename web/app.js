@@ -139,7 +139,7 @@ function renderStartGuide(box) {
       "抓取浏览器 Cookie",
       hasCookies
         ? "已完成"
-        : "交易接口需要网页 Cookie。双击程序文件夹里的「抓取Cookie.bat」（需先用调试端口启动 Edge）",
+        : "先双击「启动浏览器.bat」登录 PSN，再双击「抓取Cookie.bat」。Cookie 约 30 天有效",
       hasCookies,
       null,
     ),
