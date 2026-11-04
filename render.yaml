@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: psn-collection-archive
+    runtime: node
+    plan: free
+    buildCommand: "echo no-build-needed"
+    startCommand: "node server/index.mjs"
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+    # 注意：免费实例的磁盘是临时的，重新部署会清空 server/data.json。
+    # 想长期保存，请升级到带持久磁盘的方案，或定期用「导出 JSON」备份。

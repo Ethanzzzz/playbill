@@ -1,0 +1,14 @@
+# 个人数据，绝不进镜像
+server/data.json
+server/data.json.*
+server/price-history.json
+import/
+*.log
+
+# 开发用
+node_modules/
+tools/
+.git/
+.github/
+README.md
+docs/

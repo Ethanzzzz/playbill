@@ -1,0 +1,14 @@
+{
+  "name": "psn-collection-archive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地优先的 PSN 消费/收藏档案：统计花费、核对每款游戏购入价、对比当前商店价、按系列与捆绑包归档。",
+  "scripts": {
+    "start": "node server/index.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

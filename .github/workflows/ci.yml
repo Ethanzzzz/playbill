@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 语法检查
+        run: |
+          node --check server/index.mjs
+          node --check server/psn.mjs
+          node --check server/csv.mjs
+          node --check web/app.js
+          node --check web/sw.js
+
+      - name: 敏感文件守卫
+        run: |
+          if git ls-files | grep -E '^(server/data\.json|server/price-history\.json|import/)'; then
+            echo "::error::检测到敏感数据被提交，请从仓库移除"
+            exit 1
+          fi
+          echo "未发现敏感文件"
