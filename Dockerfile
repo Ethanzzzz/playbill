@@ -9,7 +9,11 @@ COPY server ./server
 COPY web ./web
 
 ENV PORT=8080
+# 数据目录独立于程序目录，挂载卷即可持久化
+ENV PSN_DATA_DIR=/data
+RUN mkdir -p /data
+
 EXPOSE 8080
 
-# 数据写到 /app/server/data.json；生产环境请挂载持久卷
+# 生产环境请挂载 /data 持久卷：docker run -v psn-data:/data ...
 CMD ["node", "server/index.mjs"]

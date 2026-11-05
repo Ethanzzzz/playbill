@@ -10,8 +10,41 @@ import { csvToTransactions } from "./csv.mjs";
 import { rebuildCatalog, rebuildSeries } from "./catalog.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = path.join(__dirname, "data.json");
-const HISTORY_FILE = path.join(__dirname, "price-history.json");
+
+// 数据目录：放在用户配置目录，而不是程序文件夹里。
+// 这样换版本 / 删掉程序文件夹，账号和购买记录都还在。
+// 可用环境变量 PSN_DATA_DIR 覆盖。
+function resolveDataDir() {
+  if (process.env.PSN_DATA_DIR) return process.env.PSN_DATA_DIR;
+  const base =
+    process.platform === "win32"
+      ? process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming")
+      : path.join(os.homedir(), ".config");
+  return path.join(base, "PSNArchive");
+}
+
+const DATA_DIR = resolveDataDir();
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const DATA_FILE = path.join(DATA_DIR, "data.json");
+const HISTORY_FILE = path.join(DATA_DIR, "price-history.json");
+
+// 老版本把数据放在 server/ 下，首次启动时迁移过来
+(function migrateLegacyData() {
+  try {
+    const legacyData = path.join(__dirname, "data.json");
+    const legacyHist = path.join(__dirname, "price-history.json");
+    if (!fs.existsSync(DATA_FILE) && fs.existsSync(legacyData)) {
+      fs.copyFileSync(legacyData, DATA_FILE);
+      console.log("  已迁移旧数据：" + legacyData);
+    }
+    if (!fs.existsSync(HISTORY_FILE) && fs.existsSync(legacyHist)) {
+      fs.copyFileSync(legacyHist, HISTORY_FILE);
+    }
+  } catch (e) {
+    console.log("  旧数据迁移失败（可忽略）：" + e.message);
+  }
+})();
+
 const WEB_DIR = path.join(__dirname, "..", "web");
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -569,8 +602,7 @@ async function handleApi(req, res, url) {
 
   if (p === "/api/state" && method === "GET") {
     const catalog = (state.catalog || []).map((c) => ({
-      name: c.name,
-      category: c.category,
+      name: c.name,      category: c.category,
       kind: c.kind || null,
       series: c.series || null,
       family: c.productId ? String(c.productId).split("-").slice(0, 2).join("-") : null,
@@ -650,6 +682,7 @@ async function handleApi(req, res, url) {
       lastTxAttempts: state.lastTxAttempts || null,
       hasCookies: Boolean(state.webCookies && state.webCookies.npsso && state.webCookies.pdccws_p),
       lastTxSync: state.lastTxSync || null,
+      dataDir: DATA_DIR,
     });
   }
 

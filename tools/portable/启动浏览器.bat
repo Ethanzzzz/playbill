@@ -25,7 +25,11 @@ if not exist "%EDGE%" (
   exit /b 1
 )
 
-start "" "%EDGE%" --remote-debugging-port=9222 --user-data-dir="%~dp0edge-profile" "https://store.playstation.com/"
+rem 浏览器配置放在用户目录，不放进程序文件夹（否则会有几百 MB，还删不掉）
+set "PROFILE=%LOCALAPPDATA%\PSNArchive\edge-profile"
+if not exist "%PROFILE%" mkdir "%PROFILE%" >nul 2>nul
+
+start "" "%EDGE%" --remote-debugging-port=9222 --user-data-dir="%PROFILE%" "https://store.playstation.com/"
 
 echo   已启动。等浏览器打开后，登录 PSN 即可。
 echo.

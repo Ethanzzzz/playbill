@@ -733,6 +733,12 @@ function openSettings() {
   $("setLang").value = s.lang || "zh";
   $("diagBox").innerHTML = "";
   $("diagBox").appendChild(el("p", "hint", `网页 Cookie：${STATE.hasCookies ? "已保存 ✅" : "未保存 ❌"}`));
+  if (STATE.dataDir) {
+    const d = el("p", "hint", "数据目录：" + STATE.dataDir);
+    d.style.wordBreak = "break-all";
+    $("diagBox").appendChild(d);
+    $("diagBox").appendChild(el("p", "hint", "换版本或删掉程序文件夹都不会丢数据；备份就复制这个目录。"));
+  }
   openModal("settingsModal");
 }
 async function saveSettings() {
