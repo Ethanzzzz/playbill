@@ -1,5 +1,5 @@
 // capture-cookies.mjs — 从已开启调试端口的 Edge/Chrome 读取网页会话 Cookie，
-// 一次性拿到 npsso 与 pdccws_p，并让本地服务自动完成登录。
+// 一次性拿到 npsso / pdccws_p 以及风控所需的其它 Cookie，并让本地服务自动完成登录。
 //
 // 前置：先双击「启动浏览器.bat」（或手动用 --remote-debugging-port=9222 启动浏览器），
 //       在那个浏览器里登录 store.playstation.com，然后运行本脚本。
@@ -54,6 +54,15 @@ const get = (n) => cookies.find((c) => c.name === n)?.value || "";
 const npsso = get("npsso");
 const pdccws = get("pdccws_p");
 
+// 索尼域下所有 Cookie 一起带上（_abck / bm_sz 等风控 Cookie 少了会被 403）
+const RELEVANT = /playstation\.com|sony\.com|np\.playstation/i;
+const bundle = {};
+for (const c of cookies) {
+  if (!c.domain || !RELEVANT.test(c.domain)) continue;
+  if (!c.value) continue;
+  bundle[c.name] = c.value;
+}
+
 if (!npsso || !pdccws) {
   console.log("");
   console.log("❌ 没有找到需要的 Cookie");
@@ -61,7 +70,7 @@ if (!npsso || !pdccws) {
   console.log("   pdccws_p:   ", pdccws ? "已拿到" : "缺失");
   console.log("");
   console.log("   常见原因：还没在那个浏览器里登录 PSN。");
-  console.log("   请打开 https://store.playstation.com 登录一次，再运行本脚本。");
+  console.log("   请打开 https://store.playstation.com 登录一次，并随便点开一个游戏页面，再运行本脚本。");
   console.log("");
   console.log("   当前浏览器里的 Cookie：", cookies.map((c) => c.name).join(", ").slice(0, 300));
   process.exit(1);
@@ -70,7 +79,7 @@ if (!npsso || !pdccws) {
 const r = await fetch(`${API}/api/cookies`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ npsso, pdccws_p: pdccws }),
+  body: JSON.stringify({ npsso, pdccws_p: pdccws, cookies: bundle }),
 });
 const data = await r.json().catch(() => ({}));
 
@@ -80,7 +89,7 @@ if (!r.ok) {
   process.exit(1);
 }
 
-console.log("✅ npsso 与 pdccws_p 已保存");
+console.log(`✅ 已保存 ${data.cookieCount || Object.keys(bundle).length} 个 Cookie（含风控 Cookie）`);
 if (data.loggedIn) {
   console.log("✅ 已自动完成登录（不用再手动粘贴 npsso）");
 } else if (data.loginError) {
@@ -89,6 +98,18 @@ if (data.loggedIn) {
 } else {
   console.log("ℹ️ 检测到已有有效登录，直接刷新程序即可");
 }
-console.log("");
-console.log("下一步：回到程序，点「同步交易」。");
+
+if (data.txOk) {
+  console.log("✅ 交易接口验证通过，可以回程序点「同步交易」了");
+} else {
+  console.log("");
+  console.log("❌ 但交易接口拒绝了这组 Cookie：");
+  console.log("   " + (data.txError || "未知错误"));
+  console.log("");
+  console.log("   按顺序试：");
+  console.log("   1) 在那个浏览器里打开 https://store.playstation.com ，确认右上角是你的头像");
+  console.log("   2) 随便点开一个游戏详情页（让商店写入会话 Cookie）");
+  console.log("   3) 重新运行本脚本");
+  console.log("   4) 仍失败 → 关掉浏览器，重新双击「启动浏览器.bat」，等 1 分钟再试");
+}
 console.log("");

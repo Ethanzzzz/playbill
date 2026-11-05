@@ -3,7 +3,7 @@
 //  - 导航请求（打开页面）：网络优先，失败才回退缓存 → 保证能拿到最新版本
 //  - 静态资源：先用缓存秒开，同时后台拉新并更新缓存（stale-while-revalidate）
 //  - /api/ 永远走网络，不缓存
-const CACHE = "psn-spend-v23-swiss";
+const CACHE = "psn-spend-v24-swiss";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

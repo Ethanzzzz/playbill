@@ -238,7 +238,9 @@ function renderOverview(box) {
   };
   const priced = owned.filter((g) => priceOf(g) > 0);
   const nowValue = priced.reduce((s, g) => s + priceOf(g), 0);
-  const saved = Math.max(0, nowValue - totalSpent);
+  const diffValue = nowValue - totalSpent;
+  // 覆盖率太低时不给出「省/多花」结论，避免误导
+  const coverageOk = priced.length >= 3 && priced.length / Math.max(1, owned.length) >= 0.4;
   const txCount = catalog.reduce((s, c) => s + (c.purchases || []).length, 0);
 
   const head = el("div", "dash-head");
@@ -257,7 +259,11 @@ function renderOverview(box) {
   };
   kpi("累计投入", fmt(totalSpent, cur()), `${txCount} 笔购买`);
   kpi("当前价值", nowValue ? fmt(nowValue, cur()) : "—", `${priced.length} 件已估价`, true);
-  kpi("累计省下", saved ? fmt(saved, cur()) : "—", "现价高于买入价", true);
+  if (coverageOk) {
+    kpi(diffValue >= 0 ? "累计省下" : "累计多花", fmt(Math.abs(diffValue), cur()), diffValue >= 0 ? "现价高于买入价" : "现价低于买入价", true);
+  } else {
+    kpi("累计省下", "—", nowValue ? "现价覆盖不足，暂不比较" : "还没有现价数据", true);
+  }
   kpi("系列 / 合集", String((STATE.series || []).filter((s) => s.totalSpent > 0).length), "有消费的系列");
   box.appendChild(kpis);
 
@@ -745,7 +751,14 @@ async function syncTx() {
     const extra = r.priced ? ` / 现价 ${r.priced.updated} 个` : "";
     toast(`交易同步：${r.transactions} 条 / 付费 ${r.paid} 笔 / 合计 ${fmt(r.total, cur())}${extra}`, 6000);
     await load();
-  } catch (e) { toast("同步交易失败：" + e.message, 7000); }
+  } catch (e) {
+    const m = String(e.message || e);
+    if (/access denied|authorized|unauthor|401|403/i.test(m)) {
+      toast("交易接口拒绝了当前 Cookie（授权失效）。请重新双击「启动浏览器.bat」登录商店，再双击「抓取Cookie.bat」，它会立刻帮你验证是否可用。", 14000);
+    } else {
+      toast("同步交易失败：" + m, 8000);
+    }
+  }
   finally { btn.disabled = false; }
 }
 

@@ -815,7 +815,12 @@ async function handleApi(req, res, url) {
     const npsso = String(body.npsso || "").trim();
     const pdccws = String(body.pdccws_p || "").trim();
     if (!npsso || !pdccws) return json(res, 400, { error: "需要 npsso 与 pdccws_p 两个值" });
-    state.webCookies = { npsso, pdccws_p: pdccws };
+
+    // 除了这两颗，浏览器里还有 _abck / bm_sz 等风控 Cookie，一起带上才不容易被拒
+    const extra = body.cookies && typeof body.cookies === "object" ? body.cookies : {};
+    const merged = { ...extra, npsso, pdccws_p: pdccws };
+    state.webCookies = merged;
+    const cookieCount = Object.keys(merged).length;
 
     // 一次性完成登录：用同一颗 npsso 换 OAuth 令牌，用户不用再单独粘贴
     let loggedIn = false;
@@ -833,7 +838,18 @@ async function handleApi(req, res, url) {
     }
 
     saveState(state);
-    return json(res, 200, { ok: true, loggedIn, loginError });
+
+    // 立刻用这对 Cookie 试一下交易接口，把问题暴露在“抓取”这一步，而不是等同步时才发现
+    let txOk = false;
+    let txError = null;
+    try {
+      await psn.fetchTransactionHistory({ ...merged }, { limit: 1, maxPages: 1 });
+      txOk = true;
+    } catch (e) {
+      txError = String(e.message || e);
+    }
+
+    return json(res, 200, { ok: true, loggedIn, loginError, txOk, txError, cookieCount });
   }
 
   if (p === "/api/prices/refresh" && method === "POST") {
