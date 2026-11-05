@@ -821,8 +821,24 @@ async function handleApi(req, res, url) {
     const pdccws = String(body.pdccws_p || "").trim();
     if (!npsso || !pdccws) return json(res, 400, { error: "需要 npsso 与 pdccws_p 两个值" });
     state.webCookies = { npsso, pdccws_p: pdccws };
+
+    // 一次性完成登录：用同一颗 npsso 换 OAuth 令牌，用户不用再单独粘贴
+    let loggedIn = false;
+    let loginError = null;
+    try {
+      if (!state.tokens || tokenExpired(state.tokens)) {
+        const code = await psn.npssoToCode(npsso);
+        const tokens = await psn.codeToTokens(code);
+        state.tokens = tokens;
+        applyRegionFromToken(state, tokens.idToken);
+        loggedIn = true;
+      }
+    } catch (e) {
+      loginError = String(e.message || e);
+    }
+
     saveState(state);
-    return json(res, 200, { ok: true });
+    return json(res, 200, { ok: true, loggedIn, loginError });
   }
 
   if (p === "/api/prices/refresh" && method === "POST") {

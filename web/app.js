@@ -131,18 +131,28 @@ function renderStartGuide(box) {
     return d;
   };
 
-  steps.appendChild(mkStep(1, "登录账号", hasToken ? "已完成" : "点右上角头像，粘贴 npsso", hasToken, hasToken ? null : { label: "去登录", fn: () => openModal("loginModal") }));
-  steps.appendChild(mkStep(2, "同步游戏库", hasGames ? `已完成，共 ${games.length} 个条目` : "拉取你拥有的游戏与封面", hasGames, hasGames ? null : { label: "同步游戏", fn: () => doSync(false) }));
   steps.appendChild(
     mkStep(
-      3,
-      "抓取浏览器 Cookie",
-      hasCookies
-        ? "已完成"
-        : "先双击「启动浏览器.bat」登录 PSN，再双击「抓取Cookie.bat」。Cookie 约 30 天有效",
+      1,
+      "启动浏览器并登录 PSN",
+      hasCookies ? "已完成" : "双击程序文件夹里的「启动浏览器.bat」，在弹出的窗口里登录 store.playstation.com",
       hasCookies,
       null,
     ),
+  );
+  steps.appendChild(
+    mkStep(
+      2,
+      "抓取 Cookie（自动登录）",
+      hasCookies && hasToken
+        ? "已完成 —— 登录与 Cookie 一步搞定"
+        : "双击「抓取Cookie.bat」，同时拿到 npsso 与 pdccws_p 并自动登录，不用再单独粘贴",
+      hasCookies && hasToken,
+      null,
+    ),
+  );
+  steps.appendChild(
+    mkStep(3, "同步游戏库", hasGames ? `已完成，共 ${games.length} 个条目` : "拉取你拥有的游戏与封面", hasGames, hasGames ? null : { label: "同步游戏", fn: () => doSync(false) }),
   );
   steps.appendChild(
     mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期，同时补全商店现价与封面（首次 1-2 分钟）", false, {
