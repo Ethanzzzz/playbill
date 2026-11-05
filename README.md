@@ -1,4 +1,4 @@
-﻿# PLAYBILL
+# PLAYBILL
 
 **一份关于你 PlayStation 收藏的账单。**
 
