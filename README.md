@@ -82,9 +82,15 @@
 
 浏览器会自动打开。首次使用按提示登录一次，之后每次双击即用。
 
+> ⚠️ **请不要点「Code → Download ZIP」。** 那是源码，里面没有 `runtime\node.exe`，
+> 双击也不会启动。要能直接用的版本，只从 **Releases** 下载。
+
 > 想放到桌面：右键 `启动程序.bat` → 发送到 → 桌面快捷方式。
 
 内置 Node 运行时，整个文件夹就是完整程序，可以随便移动、复制、拷到别的电脑。
+
+数据和登录状态**不在程序文件夹里**，而在 `%APPDATA%\PSNArchive`（macOS/Linux 是 `~/.config/PSNArchive`）。
+所以换版本、删掉程序文件夹都不会丢数据；备份就复制这个目录。
 
 ### 方式二：从源码运行（开发者）
 
@@ -124,13 +130,17 @@ npm start
 
 ### 存在哪里
 
-| 文件 | 内容 | 敏感度 |
-|---|---|---|
-| `server/data.json` | 令牌、Cookie、游戏库、全部交易记录 | 🔴 **极高** |
-| `server/price-history.json` | 每日价格快照 | 🟢 低 |
-| `import/` | 调试中间数据、截图 | 🟡 可能含账号信息 |
+数据目录在用户配置目录下，**不在仓库里，也不在程序文件夹里**：
 
-前两项永远**只在本地**。代码里没有任何上报逻辑。
+| 路径 | 内容 | 敏感度 |
+|---|---|---|
+| `%APPDATA%\PSNArchive\data.json` | 令牌、Cookie、游戏库、全部交易记录 | 🔴 **极高** |
+| `%APPDATA%\PSNArchive\price-history.json` | 每日价格快照 | 🟢 低 |
+| `%LOCALAPPDATA%\PSNArchive\edge-profile` | 抓 Cookie 用的独立浏览器配置 | 🟡 含登录态 |
+| `import/`（仅开发时） | 调试中间数据、截图 | 🟡 可能含账号信息 |
+
+macOS / Linux 对应 `~/.config/PSNArchive`（可用环境变量 `PSN_DATA_DIR` 覆盖）。
+代码里没有任何上报逻辑。
 
 ### 上传 GitHub 前
 

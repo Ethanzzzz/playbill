@@ -1,4 +1,4 @@
-// index.mjs — 本地服务端：托管 PWA 前端 + 提供 PSN 数据 API。
+﻿// index.mjs — 本地服务端：托管 PWA 前端 + 提供 PSN 数据 API。
 // 设计原则：令牌与全部数据只保存在本机 data.json，不向任何第三方上传。
 import http from "node:http";
 import fs from "node:fs";
@@ -515,8 +515,10 @@ function saveHistory(h) {
 }
 
 /**
- * 抓取当前商店价并记录当天快照。
- * 每个 productId 每天只记一条（幂等）。
+ * 抓取当前商店价并记录当天快照。每个 productId 每天只记一条（幂等）。
+ *
+ * 关键：查价必须用「匿名」请求。带上登录 Cookie 时，已拥有的商品只会返回
+ * PURCHASED / DOWNLOAD 的 CTA，price 里每个字段都是 null，会被误判成 HK$0。
  */
 async function snapshotPrices(state) {
   const history = loadHistory();
@@ -535,51 +537,82 @@ async function snapshotPrices(state) {
     if (g.productId) gameByPid.set(g.productId, g);
     if (g.name) gameByName.set(normName(g.name), g);
   }
-  const ids = [...byPid.keys()];
 
+  // 清掉旧版本误写的 0 元价格（拿不到价 ≠ 免费）
+  let cleaned = 0;
+  for (const c of entries) {
+    const pr = c.store?.price;
+    const bad = pr && !pr.isFree && !(Number(pr.discountedPrice) > 0) && !(Number(pr.basePrice) > 0);
+    if (!bad) continue;
+    delete c.store.price;
+    cleaned++;
+    const g = gameByPid.get(c.productId);
+    if (g && g.priceSource === "store-gql" && !(Number(g.currentPrice) > 0)) {
+      g.currentPrice = null;
+      delete g.currentPriceAt;
+      delete g.currentBasePrice;
+    }
+  }
+
+  const ids = [...byPid.keys()];
   let added = 0;
   let skipped = 0;
   let failed = 0;
   const failedIds = [];
 
-  // 第一遍：只抓价格（并发 2，留出间隔），失败的记下来
+  const apply = (pid, p) => {
+    const c = byPid.get(pid);
+    const arr = history[pid] || (history[pid] = []);
+    const already = arr.some((x) => x.d === today);
+    if (c) {
+      c.store = c.store || {};
+      c.store.price = {
+        currency: p.currency,
+        basePrice: p.base,
+        discountedPrice: p.price,
+        discountText:
+          Number(p.base) > 0 && p.price != null && p.price < p.base
+            ? `-${Math.round((1 - p.price / p.base) * 100)}%`
+            : null,
+        isFree: Boolean(p.isFree),
+      };
+      c.store.checkedAt = today;
+    }
+    const g = gameByPid.get(pid) || gameByName.get(normName(c?.name));
+    if (g) {
+      if (p.price != null) g.currentPrice = p.price;
+      if (p.base != null) g.currentBasePrice = p.base;
+      g.currentPriceAt = today;
+      g.priceSource = "store-gql";
+    }
+    if (already) skipped++;
+    else {
+      arr.push({ d: today, b: p.base, p: p.price });
+      added++;
+    }
+  };
+
+  const fetchPrice = async (pid, allowContainer = true) => {
+    let p = await psn.fetchCtaPrice(pid);
+    if (!p && allowContainer) {
+      // 兜底：商店容器接口，同样是公开接口，不需要登录
+      const s = await psn.fetchStorePrice(pid, state.settings.country, state.settings.lang);
+      if (s && (Number(s.amount) > 0 || Number(s.baseAmount) > 0)) {
+        p = { currency: s.currency || state.settings.currency, base: s.baseAmount, price: s.amount, isFree: false };
+      }
+    }
+    return p && (Number(p.price) > 0 || Number(p.base) > 0 || p.isFree) ? p : null;
+  };
+
+  // 第一遍：并发 2，失败记下来
   async function priceWorker() {
     while (ids.length) {
       const pid = ids.shift();
       if (!pid) break;
-      const arr = history[pid] || (history[pid] = []);
-      const already = arr.some((x) => x.d === today);
       try {
-        const p = await psn.fetchCtaPrice(pid, state.webCookies || {});
-        if (p && (p.price != null || p.base != null)) {
-          const c = byPid.get(pid);
-          if (c) {
-            c.store = c.store || {};
-            c.store.price = {
-              currency: p.currency,
-              basePrice: p.base,
-              discountedPrice: p.price,
-              discountText:
-                p.base && p.price && p.price < p.base ? `-${Math.round((1 - p.price / p.base) * 100)}%` : null,
-              isFree: p.isFree,
-            };
-            c.store.checkedAt = today;
-          }
-          const g = gameByPid.get(pid) || gameByName.get(normName(byPid.get(pid)?.name));
-          if (g) {
-            if (p.price != null) g.currentPrice = p.price;
-            if (p.base != null) g.currentBasePrice = p.base;
-            g.currentPriceAt = today;
-            g.priceSource = "store-gql";
-          }
-          if (already) skipped++;
-          else {
-            arr.push({ d: today, b: p.base, p: p.price });
-            added++;
-          }
-        } else {
-          failedIds.push(pid);
-        }
+        const p = await fetchPrice(pid);
+        if (p) apply(pid, p);
+        else failedIds.push(pid);
       } catch {
         failedIds.push(pid);
       }
@@ -588,39 +621,14 @@ async function snapshotPrices(state) {
   }
   await Promise.all([priceWorker(), priceWorker()]);
 
-  // 第二遍：对失败的项重试一次（间隔久一点，避开瞬时风控）
+  // 第二遍：失败的再试一次（间隔久一点，避开瞬时风控）
   if (failedIds.length) {
     await new Promise((r) => setTimeout(r, 2000));
     for (const pid of [...failedIds]) {
-      const arr = history[pid] || (history[pid] = []);
-      const already = arr.some((x) => x.d === today);
       try {
-        const p = await psn.fetchCtaPrice(pid, state.webCookies || {});
-        if (p && (p.price != null || p.base != null)) {
-          const c = byPid.get(pid);
-          if (c) {
-            c.store = c.store || {};
-            c.store.price = {
-              currency: p.currency,
-              basePrice: p.base,
-              discountedPrice: p.price,
-              discountText:
-                p.base && p.price && p.price < p.base ? `-${Math.round((1 - p.price / p.base) * 100)}%` : null,
-              isFree: p.isFree,
-            };
-            c.store.checkedAt = today;
-          }
-          const g = gameByPid.get(pid) || gameByName.get(normName(byPid.get(pid)?.name));
-          if (g) {
-            if (p.price != null) g.currentPrice = p.price;
-            if (p.base != null) g.currentBasePrice = p.base;
-            g.currentPriceAt = today;
-            g.priceSource = "store-gql";
-          }
-          if (!already) {
-            arr.push({ d: today, b: p.base, p: p.price });
-            added++;
-          } else skipped++;
+        const p = await fetchPrice(pid, false); // 重试只打 CTA，不再重复容器请求
+        if (p) {
+          apply(pid, p);
           failedIds.splice(failedIds.indexOf(pid), 1);
         }
       } catch {}
@@ -628,27 +636,35 @@ async function snapshotPrices(state) {
     }
   }
 
-  // 第三遍：补封面（限量，避免拖垮整个流程）
+  // 第三遍：补封面。先补花过钱的（用户最常看的），并发 2，给 120 秒预算
   let imgFixed = 0;
-  const needImg = (state.catalog || []).filter((c) => c.productId && !c.image).slice(0, 40);
-  for (const c of needImg) {
-    try {
-      const img = await psn.fetchStoreImage(c.productId);
-      if (img) {
-        c.image = img;
-        const g = gameByPid.get(c.productId);
-        if (g && !g.cover) g.cover = img;
-        imgFixed++;
-      }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 180));
+  const imgQueue = (state.catalog || [])
+    .filter((x) => x.productId && !x.image)
+    .sort((a, b) => (Number(b.totalSpent) || 0) - (Number(a.totalSpent) || 0));
+  const imgDeadline = Date.now() + 120_000;
+  async function imgWorker() {
+    while (imgQueue.length && Date.now() < imgDeadline) {
+      const c = imgQueue.shift();
+      if (!c) break;
+      try {
+        const img = await psn.fetchStoreImage(c.productId);
+        if (img) {
+          c.image = img;
+          const g = gameByPid.get(c.productId);
+          if (g && !g.cover) g.cover = img;
+          imgFixed++;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 80));
+    }
   }
+  await Promise.all([imgWorker(), imgWorker()]);
 
   failed = failedIds.length;
   rebuildSeries(state); // 把新补的封面/现价同步到 series
   saveHistory(history);
   saveState(state);
-  return { date: today, total: byPid.size, added, skipped, failed, imgFixed };
+  return { date: today, total: byPid.size, added, skipped, failed, imgFixed, cleaned };
 }
 
 // ---------------- 路由 ----------------
@@ -828,17 +844,29 @@ async function handleApi(req, res, url) {
         error: "缺少网页会话 Cookie（需要 npsso 与 pdccws_p）。请先完成「从浏览器获取 Cookie」。",
       });
     }
+    const body = await readBody(req).catch(() => ({}));
+    // 索尼的交易接口被拒时，可能有两种原因：会话被登出，或短时间调用太频繁。先冷处理 5 分钟，别继续撞
+    const waitMs = (state.txBlockedUntil || 0) - Date.now();
+    if (waitMs > 0) {
+      return json(res, 429, {
+        error: `索尼刚刚拒绝了交易接口，还要等 ${Math.ceil(waitMs / 1000)} 秒。到点再点一次；如果仍然不行，就重做「启动浏览器.bat → 抓取Cookie.bat」（会话可能被登出了）。`,
+        retryAfterSec: Math.ceil(waitMs / 1000),
+      });
+    }
     try {
       const txs = await psn.fetchTransactionHistory(c);
       const paid = psn.extractPaidPurchases(txs);
       const merged = mergePaidPurchases(state, paid);
       // 关键：把交易重新整理成 catalog / series，否则前端拿不到任何图表数据
       const built = rebuildCatalog(state, txs);
-      // 顺便刷新商店现价（「当前价值 / 累计省下」依赖它）
+      // 现价默认不在这里抓：263 个商品要两三分钟，单独走 /api/prices/refresh，
+      // 前端可以给进度、也不会因为单个请求太久被中间层掐断。
       let priced = null;
-      try {
-        priced = await snapshotPrices(state);
-      } catch {}
+      if (body && body.withPrices) {
+        try {
+          priced = await snapshotPrices(state);
+        } catch {}
+      }
       state.lastTxSync = new Date().toISOString();
       state.lastSync = state.lastTxSync;
       state.lastSyncNote = `交易 ${txs.length} 条，付费 ${paid.length} 笔`;
@@ -854,7 +882,16 @@ async function handleApi(req, res, url) {
         total: Number(total.toFixed(2)),
       });
     } catch (e) {
-      return json(res, 400, { error: String(e.message || e) });
+      const msg = String(e.message || e);
+      if (/access denied|authoriz|401|403/i.test(msg)) {
+        state.txBlockedUntil = Date.now() + 5 * 60 * 1000;
+        saveState(state);
+        return json(res, 429, {
+          error: "索尼的交易接口拒绝了这次请求：可能是会话被登出，也可能是短时间调用太频繁。等 5 分钟再试；不行就重做「启动浏览器 → 抓取Cookie」。",
+          retryAfterSec: 300,
+        });
+      }
+      return json(res, 400, { error: msg });
     }
   }
 
@@ -922,46 +959,6 @@ async function handleApi(req, res, url) {
     }
 
     return json(res, 200, { ok: true, loggedIn, loginError, txOk, txError, cookieCount });
-  }
-
-  if (p === "/api/prices/refresh" && method === "POST") {
-    const body = await readBody(req);
-    const onlyIds = Array.isArray(body.ids) ? new Set(body.ids) : null;
-    const targets = state.games.filter((g) => !onlyIds || onlyIds.has(g.id));
-    const today = new Date().toISOString().slice(0, 10);
-    let updated = 0;
-    let failed = 0;
-
-    const refreshOne = async (g) => {
-      let price = null;
-      if (g.productId) {
-        price = await psn.fetchStorePrice(g.productId, state.settings.country, state.settings.lang);
-      }
-      if (!price || price.amount == null) {
-        // 没有 productId（手动/CSV 导入）时，按名称搜索商店
-        const s = await psn.searchStorePrice(g.name, state.settings.country, state.settings.lang);
-        if (s && s.amount != null) {
-          price = { amount: s.amount, display: s.display, currency: s.currency };
-          if (!g.productId && s.productId && s.score >= 60) g.productId = s.productId;
-        }
-      }
-      if (price && price.amount != null) {
-        g.currentPrice = price.amount;
-        g.currentPriceAt = today;
-        g.priceSource = "store";
-        updated++;
-      } else {
-        failed++;
-      }
-    };
-
-    for (let i = 0; i < targets.length; i += 3) {
-      await Promise.all(targets.slice(i, i + 3).map(refreshOne));
-      await new Promise((r) => setTimeout(r, 120));
-    }
-
-    saveState(state);
-    return json(res, 200, { ok: true, total: targets.length, updated, failed });
   }
 
   if (p === "/api/games" && method === "POST") {
@@ -1135,6 +1132,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// 本地单用户工具：抓价格要两三分钟，别让 Node 的默认 5 分钟请求超时把请求掐断
+server.requestTimeout = 0;
+server.headersTimeout = 60_000;
+
 server.listen(PORT, HOST, () => {
   const nets = os.networkInterfaces();
   const lan = [];
@@ -1144,7 +1145,7 @@ server.listen(PORT, HOST, () => {
     }
   }
   console.log("");
-  console.log("  PSN 消费统计（本地）已启动");
+  console.log("  PSN 收藏档案 · 本地服务已启动");
   console.log("  本机访问： http://localhost:" + PORT);
   if (lan.length) console.log("  iPhone 访问（同一 Wi-Fi）： " + lan.map((a) => `http://${a}:${PORT}`).join("  "));
   console.log("  数据文件： " + DATA_FILE);

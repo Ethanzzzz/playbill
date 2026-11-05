@@ -566,12 +566,12 @@ export function extractPaidPurchases(transactions) {
 // 用于每日价格快照。必须带 Accept-Language，否则服务端按 GB/en 解析直接 404。
 const CTA_HASH = "911a43f47dbbf7b2f3d513d6237dedfd679e57af3f34787667a22ecad6a249cd";
 
-export async function fetchCtaPrice(productId, cookies = {}) {
+// ⚠ 必须匿名请求（不带登录 Cookie）。
+// 带上 Cookie 时，已拥有的商品只会返回 PURCHASED / DOWNLOAD 的 CTA，
+// price 里每个字段都是 null → 旧代码 Number(null) = 0 → 被记成 HK$0，
+// 于是「当前价值」只剩零星几件。这是 2026-11 排查到的根因。
+export async function fetchCtaPrice(productId, _cookiesIgnored = {}) {
   if (!productId) return null;
-  const cookieHeader = Object.entries(cookies)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
   const variables = JSON.stringify({ productId });
   const extensions = JSON.stringify({ persistedQuery: { version: 1, sha256Hash: CTA_HASH } });
   const url =
@@ -591,7 +591,6 @@ export async function fetchCtaPrice(productId, cookies = {}) {
         "apollographql-client-version": "2.186.2-hotfix.2",
         Referer: "https://store.playstation.com/",
         Origin: "https://store.playstation.com",
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       },
       timeout: 20000,
     });
@@ -603,23 +602,34 @@ export async function fetchCtaPrice(productId, cookies = {}) {
   if (!prod) return null;
 
   const ctas = prod.webctas || [];
-  const cta =
-    ctas.find((x) => x.type === "ADD_TO_CART" && x.price) ||
-    ctas.find((x) => x.price && (x.price.discountedValue > 0 || x.price.basePriceValue > 0)) ||
-    ctas.find((x) => x.price);
-  const pr = cta?.price;
+  const pr =
+    ctas.find((x) => x.type === "ADD_TO_CART" && x.price)?.price ||
+    ctas.find((x) => x.price && (x.price.discountedValue > 0 || x.price.basePriceValue > 0))?.price ||
+    ctas.find((x) => x.price)?.price;
   if (!pr) return null;
 
-  const base = Number(pr.basePriceValue);
-  const disc = Number(pr.discountedValue);
-  if (!Number.isFinite(base) && !Number.isFinite(disc)) return null;
+  // 只有正数才算有效价格；null / 0 一律当「没有价格」，绝不写进数据
+  const money = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n / 100 : null;
+  };
+  const base = money(pr.basePriceValue);
+  const disc = money(pr.discountedValue);
+  const isFree = Boolean(pr.isFree);
+  if (base == null && disc == null) {
+    // 真的免费（PS Plus 每月游戏、免费领取）才返回 0，其余视为失败
+    if (isFree) {
+      return { productId: prod.id, name: prod.name, currency: pr.currencyCode || "HKD", base: 0, price: 0, isFree: true };
+    }
+    return null;
+  }
 
   return {
     productId: prod.id,
     name: prod.name,
     currency: pr.currencyCode || "HKD",
-    base: Number.isFinite(base) ? base / 100 : null,
-    price: Number.isFinite(disc) ? disc / 100 : null,
-    isFree: Boolean(pr.isFree),
+    base: base,
+    price: disc,
+    isFree: isFree,
   };
 }

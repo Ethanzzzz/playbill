@@ -1,16 +1,17 @@
-// app.js — PSN 收藏档案（总览仪表盘 + 系列档案）
+﻿// app.js — PSN 收藏档案（总览仪表盘 + 系列档案）
 const $ = (id) => document.getElementById(id);
 const OVERVIEW = "__overview__";
 let STATE = { games: [], catalog: [], series: [], settings: { currency: "HKD" } };
 let ACTIVE = OVERVIEW;
 
 /* ---------- 基础工具 ---------- */
+// ms <= 0 表示「常驻」，用于几分钟的长任务，结束后再换成结果文案
 function toast(msg, ms = 2400) {
   const t = $("toast");
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => (t.hidden = true), ms);
+  if (ms > 0) t._timer = setTimeout(() => (t.hidden = true), ms);
 }
 function fmt(n, currency) {
   if (n == null || Number.isNaN(Number(n))) return "—";
@@ -173,10 +174,10 @@ function renderStartGuide(box) {
     ),
   );
   steps.appendChild(
-    mkStep(3, "同步游戏库", hasGames ? `已完成，共 ${games.length} 个条目` : "拉取你拥有的游戏与封面", hasGames, hasGames ? null : { label: "同步游戏", fn: () => doSync(false) }),
+    mkStep(3, "同步游戏库", hasGames ? `已完成，共 ${games.length} 个条目` : "拉取你拥有的游戏与封面（几秒钟）", hasGames, hasGames ? null : { label: "同步游戏", fn: () => doSync(false) }),
   );
   steps.appendChild(
-    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期，同时补全商店现价与封面（首次 1-2 分钟）", false, {
+    mkStep(4, "同步交易记录", "拿到每笔订单的商品、金额、日期，随后自动补全商店现价与封面（首次 2-4 分钟）", false, {
       label: "同步交易",
       fn: () => syncTx(),
     }),
@@ -734,51 +735,92 @@ function productRow(p, family = []) {
 }
 
 /* ---------- 操作 ---------- */
+let BUSY = false;
+// 长任务的常驻提示：每 5 秒把「已用多少秒」写进提示条，用户不会以为卡死
+function progressToast(label) {
+  const t0 = Date.now();
+  const tick = () => toast(`${label}（已用 ${Math.round((Date.now() - t0) / 1000)} 秒）`, 0);
+  tick();
+  const id = setInterval(tick, 5000);
+  return () => clearInterval(id);
+}
+
 async function doSync(withPrices) {
   const btn = $("btnSync");
   btn.disabled = true;
+  BUSY = true;
   try {
     const r = await api("/api/sync", { method: "POST", body: JSON.stringify({ withPrices }) });
-    toast(`游戏同步完成：${r.purchased ?? r.count} 个`);
+    toast(`游戏同步完成：${r.purchased ?? r.count} 个`, 4000);
     await load();
   } catch (e) { toast("同步失败：" + e.message, 5000); }
-  finally { btn.disabled = false; }
+  finally { btn.disabled = false; BUSY = false; }
 }
 async function syncTx() {
   const btn = $("btnSyncTx");
   btn.disabled = true;
-  toast("正在同步交易并更新商店现价，首次约 1-2 分钟…", 180000);
+  BUSY = true;
+  let stop = progressToast("正在同步交易记录");
   try {
     const r = await api("/api/sync/transactions", { method: "POST", body: "{}" });
-    const extra = r.priced ? ` / 现价 ${r.priced.updated} 个` : "";
-    toast(`交易同步：${r.transactions} 条 / 付费 ${r.paid} 笔 / 合计 ${fmt(r.total, cur())}${extra}`, 6000);
+    stop();
+    const head = `交易 ${r.transactions} 条 / 付费 ${r.paid} 笔 / 合计 ${fmt(r.total, cur())}`;
+    await load();
+    toast(head + "，接着更新商店现价…", 4000);
+
+    // 现价单独一轮：263 个商品要两三分钟，这样能显示进度、也不会让单个请求超时
+    stop = progressToast("正在更新商店现价与封面");
+    let priced = null;
+    try {
+      priced = await api("/api/prices/refresh", { method: "POST", body: "{}" });
+    } catch (e) {
+      toast(`${head}；但现价更新失败：${e.message}`, 10000);
+      return;
+    } finally { stop(); }
+    const extra = priced
+      ? ` / 现价 ${priced.added + priced.skipped} 个${priced.failed ? `（${priced.failed} 个查不到）` : ""}${
+          priced.imgFixed ? ` / 封面 +${priced.imgFixed}` : ""
+        }`
+      : "";
+    toast(head + extra, 10000);
     await load();
   } catch (e) {
+    stop();
     const m = String(e.message || e);
     if (/access denied|authorized|unauthor|401|403/i.test(m)) {
-      toast("交易接口拒绝了当前 Cookie（授权失效）。请重新双击「启动浏览器.bat」登录商店，再双击「抓取Cookie.bat」，它会立刻帮你验证是否可用。", 14000);
+      toast(
+        "交易接口暂时拒绝：可能是会话被登出，或短时间调用太频繁。等 5 分钟再点一次；如果还不行，重做「启动浏览器 → 抓取Cookie」。",
+        16000,
+      );
     } else {
       toast("同步交易失败：" + m, 8000);
     }
   }
-  finally { btn.disabled = false; }
+  finally { btn.disabled = false; BUSY = false; }
 }
 
 async function refreshPrices() {
   const btn = $("btnRefreshPrices");
   if (!btn) return;
   btn.disabled = true;
+  BUSY = true;
   const label = btn.textContent;
   btn.textContent = "更新中…";
+  const stop = progressToast("正在更新商店现价与封面");
   try {
     const r = await api("/api/prices/refresh", { method: "POST", body: "{}" });
-    toast(`现价已更新：成功 ${r.added + r.skipped} 个，失败 ${r.failed} 个`, 5000);
+    toast(
+      `现价已更新：${r.added + r.skipped} 个${r.failed ? `，${r.failed} 个查不到` : ""}${r.imgFixed ? `，封面 +${r.imgFixed}` : ""}`,
+      6000,
+    );
     await load();
   } catch (e) {
     toast("更新失败：" + e.message, 6000);
   } finally {
+    stop();
     btn.disabled = false;
     btn.textContent = label;
+    BUSY = false;
   }
 }
 function openModal(id) { $(id).hidden = false; }
@@ -813,6 +855,26 @@ function openSettings() {
     d.style.wordBreak = "break-all";
     $("diagBox").appendChild(d);
     $("diagBox").appendChild(el("p", "hint", "换版本或删掉程序文件夹都不会丢数据；备份就复制这个目录。"));
+  }
+  // 数据健康度：一眼看出「当前价值」凭什么算、还差多少
+  const cat = STATE.catalog || [];
+  if (cat.length) {
+    const paid = cat.filter((c) => Number(c.totalSpent) > 0);
+    const pricedPaid = paid.filter((c) => Number(c.discountedPrice ?? c.basePrice ?? 0) > 0);
+    const withImg = cat.filter((c) => c.image).length;
+    const box = el("div", "diag");
+    box.appendChild(el("p", "hint", `购买明细：${cat.length} 项，其中付费 ${paid.length} 项`));
+    box.appendChild(
+      el(
+        "p",
+        "hint",
+        `有商店现价：${pricedPaid.length} / ${paid.length} 项（覆盖 ${Math.round((pricedPaid.length / Math.max(paid.length, 1)) * 100)}%）；封面 ${withImg} / ${cat.length}`,
+      ),
+    );
+    if (pricedPaid.length / Math.max(paid.length, 1) < 0.8) {
+      box.appendChild(el("p", "hint", "覆盖率低于 80% 时「累计省下」会显示「—」，避免给出不可信的数字。"));
+    }
+    $("diagBox").appendChild(box);
   }
   openModal("settingsModal");
 }
@@ -928,7 +990,15 @@ async function openHistory(p) {
 
 /* ---------- 绑定 ---------- */
 function bind() {
-  $("btnSync").onclick = () => { if (!STATE.hasToken) return openModal("loginModal"); doSync(confirm("是否同时抓取商店现价？（较慢）")); };
+  $("btnSync").onclick = async () => {
+    // 抓完 Cookie 回到页面时，STATE 可能还是旧的：先拉一次最新状态再决定
+    try {
+      STATE = await api("/api/state");
+      render();
+    } catch {}
+    if (!STATE.hasToken) return openModal("loginModal");
+    doSync(false);
+  };
   $("btnSyncTx").onclick = syncTx;
   $("btnSettings").onclick = openSettings;
   $("btnSaveSettings").onclick = saveSettings;
@@ -943,6 +1013,30 @@ function bind() {
 
 bind();
 load();
+
+// 状态自动跟上服务端：抓完 Cookie / 在别的窗口同步过，回到这个页面就会自动更新，
+// 不需要用户手动刷新（以前会出现「已登录却还弹粘贴 npsso」的情况）。
+async function softRefresh() {
+  if (document.hidden || BUSY) return;
+  if (document.querySelector(".modal:not([hidden])")) return;
+  try {
+    const s = await api("/api/state");
+    const changed =
+      s.hasToken !== STATE.hasToken ||
+      s.hasCookies !== STATE.hasCookies ||
+      (s.games || []).length !== (STATE.games || []).length ||
+      (s.catalog || []).length !== (STATE.catalog || []).length ||
+      s.lastTxSync !== STATE.lastTxSync;
+    if (changed) {
+      STATE = s;
+      render();
+    }
+  } catch {}
+}
+window.addEventListener("focus", softRefresh);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) softRefresh(); });
+setInterval(() => { if (!document.hidden) softRefresh(); }, 20000);
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }

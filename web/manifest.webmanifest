@@ -1,13 +1,12 @@
 {
-  "name": "PSN 消费统计",
-  "short_name": "PSN 消费",
-  "description": "查看 PSN 消费总额、每款游戏购入价，并对比当前商店价格。",
+  "name": "PSN 收藏档案",
+  "short_name": "收藏档案",
+  "description": "本地优先的 PSN 消费与收藏档案：累计投入、当前价值、系列与捆绑包、价格历史。",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#080c14",
-  "theme_color": "#0b1220",
+  "background_color": "#f4f2ee",
+  "theme_color": "#f4f2ee",
   "lang": "zh-CN",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
