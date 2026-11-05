@@ -12,7 +12,7 @@
 
 ### 三步
 
-1. 打开 [Releases](../../releases) 页面，下载 `PSN收藏档案-绿色版-vX.Y.Z.zip`（约 35 MB）
+1. 打开 [Releases](../../releases) 页面，下载 `PSN-Archive-portable-v*-win64.zip`（绿色版，约 34 MB）
 2. 右键压缩包 → **全部解压**，得到一个 `PSN收藏档案` 文件夹（放到桌面就行）
 3. 双击文件夹里的 **`启动程序.bat`**
 

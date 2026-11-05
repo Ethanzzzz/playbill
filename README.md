@@ -76,7 +76,7 @@
 
 **不需要安装 Node.js，不需要命令行。**
 
-1. 到 [Releases](../../releases) 页面，下载 `PSN收藏档案-绿色版-*.zip`
+1. 到 [Releases](../../releases) 页面，下载 `PSN-Archive-portable-v*-win64.zip`（绿色版）
 2. 解压到任意文件夹（比如桌面）
 3. 双击 **`启动程序.bat`**
 
