@@ -540,11 +540,6 @@ async function snapshotPrices(state) {
       if (!pid) break;
       const arr = history[pid] || (history[pid] = []);
       const already = arr.some((x) => x.d === today);
-      // 今天已记录且有封面 → 直接跳过，避免重复同步时反复请求
-      if (already && byPid.get(pid)?.image) {
-        skipped++;
-        continue;
-      }
       try {
         const p = await psn.fetchCtaPrice(pid, state.webCookies || {});
         if (p && (p.price != null || p.base != null)) {

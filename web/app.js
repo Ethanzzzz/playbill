@@ -203,7 +203,20 @@ function renderOverview(box) {
   }
   const totalSpent = games.reduce((s, g) => s + (Number(g.purchasePrice) || 0), 0);
   const owned = games.filter((g) => g.purchasePrice > 0);
-  const nowValue = owned.reduce((s, g) => s + (Number(g.currentPrice) || 0), 0);
+  // 现价可能只在 catalog 里（例如刚同步过但 games 还没回写），做一层兜底
+  const priceByPid = new Map();
+  for (const c of catalog) {
+    const v = c.discountedPrice ?? c.basePrice;
+    if (c.productId && v != null && v > 0) priceByPid.set(c.productId, v);
+  }
+  const priceOf = (g) => {
+    const own = Number(g.currentPrice);
+    if (Number.isFinite(own) && own > 0) return own;
+    const fallback = g.productId ? priceByPid.get(g.productId) : null;
+    return fallback != null && fallback > 0 ? fallback : 0;
+  };
+  const priced = owned.filter((g) => priceOf(g) > 0);
+  const nowValue = priced.reduce((s, g) => s + priceOf(g), 0);
   const saved = Math.max(0, nowValue - totalSpent);
   const txCount = catalog.reduce((s, c) => s + (c.purchases || []).length, 0);
 
@@ -222,7 +235,7 @@ function renderOverview(box) {
     kpis.appendChild(d);
   };
   kpi("累计投入", fmt(totalSpent, cur()), `${txCount} 笔购买`);
-  kpi("当前价值", nowValue ? fmt(nowValue, cur()) : "—", `${owned.length} 件仍可估价`, true);
+  kpi("当前价值", nowValue ? fmt(nowValue, cur()) : "—", `${priced.length} 件已估价`, true);
   kpi("累计省下", saved ? fmt(saved, cur()) : "—", "现价高于买入价", true);
   kpi("系列 / 合集", String((STATE.series || []).filter((s) => s.totalSpent > 0).length), "有消费的系列");
   box.appendChild(kpis);
