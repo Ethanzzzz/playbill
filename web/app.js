@@ -222,25 +222,23 @@ function renderOverview(box) {
     renderStartGuide(box);
     return;
   }
-  const totalSpent = games.reduce((s, g) => s + (Number(g.purchasePrice) || 0), 0);
-  const owned = games.filter((g) => g.purchasePrice > 0);
-  // 现价可能只在 catalog 里（例如刚同步过但 games 还没回写），做一层兜底
-  const priceByPid = new Map();
-  for (const c of catalog) {
-    const v = c.discountedPrice ?? c.basePrice;
-    if (c.productId && v != null && v > 0) priceByPid.set(c.productId, v);
-  }
-  const priceOf = (g) => {
-    const own = Number(g.currentPrice);
-    if (Number.isFinite(own) && own > 0) return own;
-    const fallback = g.productId ? priceByPid.get(g.productId) : null;
-    return fallback != null && fallback > 0 ? fallback : 0;
-  };
-  const priced = owned.filter((g) => priceOf(g) > 0);
-  const nowValue = priced.reduce((s, g) => s + priceOf(g), 0);
+
+  // 以「购买明细（catalog）」为准：它才是真正花了钱的清单，覆盖率远高于游戏库
+  const paidCat = catalog.filter((c) => Number(c.totalSpent) > 0);
+  const catPrice = (c) => Number(c.discountedPrice ?? c.basePrice ?? 0);
+  const pricedCat = paidCat.filter((c) => catPrice(c) > 0);
+  const catSpent = paidCat.reduce((s, c) => s + Number(c.totalSpent), 0);
+  const catValue = pricedCat.reduce((s, c) => s + catPrice(c), 0);
+
+  // 游戏库口径仅作兜底（catalog 缺失时）
+  const gameSpent = games.reduce((s, g) => s + (Number(g.purchasePrice) || 0), 0);
+  const totalSpent = paidCat.length ? catSpent : gameSpent;
+
+  const nowValue = paidCat.length ? catValue : 0;
   const diffValue = nowValue - totalSpent;
-  // 覆盖率太低时不给出「省/多花」结论，避免误导
-  const coverageOk = priced.length >= 3 && priced.length / Math.max(1, owned.length) >= 0.4;
+  const coverage = paidCat.length ? pricedCat.length / paidCat.length : 0;
+  const coverageOk = pricedCat.length >= 3 && coverage >= 0.8;
+  const priced = pricedCat;
   const txCount = catalog.reduce((s, c) => s + (c.purchases || []).length, 0);
 
   const head = el("div", "dash-head");
@@ -493,10 +491,14 @@ function renderSeries(box) {
       image: c.image || null,
     });
   }
+  // 父节点：优先「花了钱的」，同组里本体 > 捆绑包 > DLC，再按金额
+  const famRank = (x) => (x.kind === "game" ? 0 : x.kind === "bundle" ? 1 : x.kind === "dlc" ? 2 : 3);
   const famHead = (arr) => {
-    const games = arr.filter((x) => x.kind === "game");
-    const pool = games.length ? games : arr;
-    return pool.slice().sort((a, b) => (b.spent || 0) - (a.spent || 0) || (a.name || "").length - (b.name || "").length)[0];
+    const paid = arr.filter((x) => (x.spent || 0) > 0);
+    const pool = paid.length ? paid : arr;
+    return pool
+      .slice()
+      .sort((a, b) => famRank(a) - famRank(b) || (b.spent || 0) - (a.spent || 0) || (a.name || "").length - (b.name || "").length)[0];
   };
 
   // 树化：顶层只保留「父条目」，子项全部收进展开层，避免重复出现

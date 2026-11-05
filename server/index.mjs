@@ -524,26 +524,34 @@ async function snapshotPrices(state) {
   const entries = (state.catalog || []).filter((c) => c.productId);
   const byPid = new Map(entries.map((c) => [c.productId, c]));
   const gameByPid = new Map();
+  const gameByName = new Map();
+  const normName = (s) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/[®™©:：\-–—.,'"()（）\[\]【】《》]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   for (const g of state.games || []) {
     if (g.productId) gameByPid.set(g.productId, g);
+    if (g.name) gameByName.set(normName(g.name), g);
   }
   const ids = [...byPid.keys()];
 
   let added = 0;
   let skipped = 0;
   let failed = 0;
-  const queue = [...ids];
+  const failedIds = [];
 
-  async function worker() {
-    while (queue.length) {
-      const pid = queue.shift();
+  // 第一遍：只抓价格（并发 2，留出间隔），失败的记下来
+  async function priceWorker() {
+    while (ids.length) {
+      const pid = ids.shift();
       if (!pid) break;
       const arr = history[pid] || (history[pid] = []);
       const already = arr.some((x) => x.d === today);
       try {
         const p = await psn.fetchCtaPrice(pid, state.webCookies || {});
         if (p && (p.price != null || p.base != null)) {
-          // 同步刷新目录里的当前价，保证列表与历史一致
           const c = byPid.get(pid);
           if (c) {
             c.store = c.store || {};
@@ -557,42 +565,90 @@ async function snapshotPrices(state) {
             };
             c.store.checkedAt = today;
           }
-          // 同步到游戏库，总览的「当前价值 / 累计省下」用的是这里
-          const g = gameByPid.get(pid);
+          const g = gameByPid.get(pid) || gameByName.get(normName(byPid.get(pid)?.name));
           if (g) {
             if (p.price != null) g.currentPrice = p.price;
             if (p.base != null) g.currentBasePrice = p.base;
             g.currentPriceAt = today;
             g.priceSource = "store-gql";
           }
-          // 缺封面的，顺手从商店容器补一张
-          if (c && !c.image) {
-            const img = await psn.fetchStoreImage(pid).catch(() => null);
-            if (img) {
-              c.image = img;
-              if (g && !g.cover) g.cover = img;
-            }
-          }
-          if (already) {
-            skipped++;
-          } else {
+          if (already) skipped++;
+          else {
             arr.push({ d: today, b: p.base, p: p.price });
             added++;
           }
         } else {
-          failed++;
+          failedIds.push(pid);
         }
       } catch {
-        failed++;
+        failedIds.push(pid);
       }
-      await new Promise((r) => setTimeout(r, 60));
+      await new Promise((r) => setTimeout(r, 120));
     }
   }
-  await Promise.all([worker(), worker(), worker(), worker()]);
+  await Promise.all([priceWorker(), priceWorker()]);
+
+  // 第二遍：对失败的项重试一次（间隔久一点，避开瞬时风控）
+  if (failedIds.length) {
+    await new Promise((r) => setTimeout(r, 2000));
+    for (const pid of [...failedIds]) {
+      const arr = history[pid] || (history[pid] = []);
+      const already = arr.some((x) => x.d === today);
+      try {
+        const p = await psn.fetchCtaPrice(pid, state.webCookies || {});
+        if (p && (p.price != null || p.base != null)) {
+          const c = byPid.get(pid);
+          if (c) {
+            c.store = c.store || {};
+            c.store.price = {
+              currency: p.currency,
+              basePrice: p.base,
+              discountedPrice: p.price,
+              discountText:
+                p.base && p.price && p.price < p.base ? `-${Math.round((1 - p.price / p.base) * 100)}%` : null,
+              isFree: p.isFree,
+            };
+            c.store.checkedAt = today;
+          }
+          const g = gameByPid.get(pid) || gameByName.get(normName(byPid.get(pid)?.name));
+          if (g) {
+            if (p.price != null) g.currentPrice = p.price;
+            if (p.base != null) g.currentBasePrice = p.base;
+            g.currentPriceAt = today;
+            g.priceSource = "store-gql";
+          }
+          if (!already) {
+            arr.push({ d: today, b: p.base, p: p.price });
+            added++;
+          } else skipped++;
+          failedIds.splice(failedIds.indexOf(pid), 1);
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  // 第三遍：补封面（限量，避免拖垮整个流程）
+  let imgFixed = 0;
+  const needImg = (state.catalog || []).filter((c) => c.productId && !c.image).slice(0, 40);
+  for (const c of needImg) {
+    try {
+      const img = await psn.fetchStoreImage(c.productId);
+      if (img) {
+        c.image = img;
+        const g = gameByPid.get(c.productId);
+        if (g && !g.cover) g.cover = img;
+        imgFixed++;
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 180));
+  }
+
+  failed = failedIds.length;
   rebuildSeries(state); // 把新补的封面/现价同步到 series
   saveHistory(history);
   saveState(state);
-  return { date: today, total: ids.length, added, skipped, failed };
+  return { date: today, total: byPid.size, added, skipped, failed, imgFixed };
 }
 
 // ---------------- 路由 ----------------
@@ -622,6 +678,16 @@ async function handleApi(req, res, url) {
     const catByPid = new Map(
       (state.catalog || []).filter((c) => c.productId).map((c) => [c.productId, c]),
     );
+    // 付过钱的命名空间：这些组里的赠品/免费项不该再被丢进「其他」
+    const paidFamilies = new Set();
+    const familyHasPaidGame = new Set();
+    for (const c of state.catalog || []) {
+      if (Number(c.totalSpent) > 0 && c.productId) {
+        const f = String(c.productId).split("-").slice(0, 2).join("-");
+        paidFamilies.add(f);
+        if (c.kind === "game") familyHasPaidGame.add(f);
+      }
+    }
     const series = (state.series || []).map((s) => ({
       key: s.key,
       label: s.label,
@@ -639,9 +705,15 @@ async function handleApi(req, res, url) {
           else if (/特典|bonus|凭证/i.test(name)) kind = "voucher";
         }
         const hasPrice = p.currentPrice != null && p.currentPrice > 0;
+        const fam = p.productId ? String(p.productId).split("-").slice(0, 2).join("-") : null;
+        const famPaid = fam ? paidFamilies.has(fam) : false;
+        // 「Dive Harder 同捆包」这类：同组里没有单独买过本体，它其实就是本体
+        if (kind === "bundle" && Number(p.spent) > 0 && fam && !familyHasPaidGame.has(fam)) {
+          kind = "game";
+        }
         const isOther =
           ["system", "avatar", "demo", "upgrade", "voucher"].includes(kind) ||
-          (!hasPrice && Number(p.spent || 0) === 0);
+          (!hasPrice && Number(p.spent || 0) === 0 && !famPaid);
 
         return {
           name: p.name,
