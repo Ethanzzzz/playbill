@@ -41,6 +41,27 @@ async function api(path, opts = {}) {
 const cur = () => STATE.settings?.currency || "HKD";
 const KIND_LABEL = { bundle: "捆绑包", game: "本体", dlc: "DLC", avatar: "化身", voucher: "凭证", subscription: "会员", wallet: "点卡", other: "其他" };
 
+// 名称 → 封面，用于给「捆绑包内含项」补图（那些只有名字，没有 productId）
+let IMG_INDEX = new Map();
+function buildImageIndex() {
+  const m = new Map();
+  for (const c of STATE.catalog || []) {
+    if (!c.image || !c.name) continue;
+    m.set(String(c.name).trim().toLowerCase(), c.image);
+  }
+  return m;
+}
+function imageForName(name) {
+  if (!name) return null;
+  const k = String(name).trim().toLowerCase();
+  if (IMG_INDEX.has(k)) return IMG_INDEX.get(k);
+  // 退一步：包含匹配
+  for (const [n, img] of IMG_INDEX) {
+    if (n.length > 6 && (n.includes(k) || k.includes(n))) return img;
+  }
+  return null;
+}
+
 /* ---------- 载入 ---------- */
 async function load() {
   try {
@@ -52,6 +73,7 @@ async function load() {
 }
 
 function render() {
+  IMG_INDEX = buildImageIndex();
   const total = (STATE.games || []).reduce((s, g) => s + (Number(g.purchasePrice) || 0), 0);
   $("total").textContent = fmt(total, cur());
   const txCount = (STATE.catalog || []).reduce((s, c) => s + (c.purchases || []).length, 0);
@@ -63,7 +85,6 @@ function render() {
   renderRail();
   renderDetail();
 }
-
 /* ---------- 左栏 ---------- */
 function renderRail() {
   const nav = $("seriesList");
@@ -601,10 +622,11 @@ function productRow(p, family = []) {
   if (p.grantedBy) sub.appendChild(el("span", "badge free", "随包附赠"));
   const dates = [...new Set((p.purchases || []).map((x) => x.date).filter(Boolean))].sort();
   sub.appendChild(el("span", null, dates.length ? (dates.length > 1 ? `${dates[0]} 起 · 共 ${dates.length} 次` : dates[0]) : p.spent > 0 ? "已购买" : "未购买 / 免费"));
+  // 捆绑包优先用商店的内含清单（更完整）；否则用同命名空间的成员
   const bundleItems = p.kind === "bundle" && p.bundle?.items?.length ? p.bundle.items : null;
-  const childCount = family.length || (bundleItems ? bundleItems.length : 0);
+  const famList = !bundleItems && family.length ? family : [];
+  const childCount = bundleItems ? bundleItems.length : famList.length;
   const canExpand = childCount > 0;
-  if (p.kind === "bundle" && p.bundle?.contents?.length && !family.length) sub.appendChild(el("span", null, `内含 ${p.bundle.contents.length} 项`));
   let expander = null;
   if (canExpand) {
     expander = el("span", "expander", `${childCount} 项`);
@@ -648,11 +670,11 @@ function productRow(p, family = []) {
     const boxEl = el("div", "bundle-box");
     boxEl.hidden = true;
 
-    if (family.length) {
+    if (famList.length) {
       const hd = el("div", "bb-head");
-      hd.innerHTML = `包含 <b>${family.length}</b> 项附加内容`;
+      hd.innerHTML = `包含 <b>${famList.length}</b> 项附加内容`;
       boxEl.appendChild(hd);
-      for (const f of family) {
+      for (const f of famList) {
         boxEl.appendChild(
           childItem(
             f.name,
@@ -669,13 +691,28 @@ function productRow(p, family = []) {
         内含单买合计 <b>${p.bundle.sumIndividualNow ? fmt(p.bundle.sumIndividualNow, cur()) : "—"}</b>
         ${p.bundle.savingsVsIndividual != null ? (p.bundle.savingsVsIndividual > 0 ? `买包省 <b>${fmt(p.bundle.savingsVsIndividual, cur())}</b>` : `单买省 <b>${fmt(-p.bundle.savingsVsIndividual, cur())}</b>`) : ""}`;
       boxEl.appendChild(hd);
+      // 商店描述里常有同名条目，合并成一行并标注份数，避免视觉噪音
+      const merged = [];
+      const seen = new Map();
       for (const it of bundleItems) {
+        const key = String(it.name || "").trim().toLowerCase();
+        if (seen.has(key)) {
+          const m = seen.get(key);
+          m.allocated = (m.allocated || 0) + (it.allocated || 0);
+          m.count += 1;
+        } else {
+          const copy = { ...it, count: 1 };
+          seen.set(key, copy);
+          merged.push(copy);
+        }
+      }
+      for (const it of merged) {
         boxEl.appendChild(
           childItem(
-            it.name,
+            it.count > 1 ? `${it.name} ×${it.count}` : it.name,
             it.allocated != null ? `分摊 ${fmt(it.allocated, cur())}` : "",
             it.currentPrice ? fmt(it.currentPrice, cur()) : "—",
-            null,
+            imageForName(it.name),
             null,
           ),
         );

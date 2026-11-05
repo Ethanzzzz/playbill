@@ -930,6 +930,162 @@ textarea { resize: vertical; }
   overflow: hidden;
 }
 
+/* ---------- 排版精修 ---------- */
+
+/* 全局滚动条：细、浅、不抢视线 */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #d8d8d8 transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #dcdcdc;
+  border: 3px solid var(--paper);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: #bdbdbd; }
+
+/* 左栏干脆不显示滚动条（仍可滚） */
+.rail {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.rail::-webkit-scrollbar { width: 0; height: 0; }
+
+/* 基础字号与行高 */
+html, body {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* 标题层级 */
+.dash-head h2,
+.detail-head h2 {
+  letter-spacing: -0.032em;
+}
+.dash-head .lede,
+.detail-head .meta {
+  line-height: 1.7;
+}
+.dash-head .lede { font-size: 13.5px; }
+
+.section-title {
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  margin: 36px 0 0;
+  padding-bottom: 9px;
+}
+
+/* KPI */
+.kpi { padding: 18px 20px 22px; }
+.kpi .k {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+}
+.kpi .v {
+  font-size: clamp(26px, 2.4vw, 38px);
+  letter-spacing: -0.03em;
+  margin-top: 12px;
+}
+.kpi .s {
+  font-size: 11px;
+  margin-top: 10px;
+  letter-spacing: 0.01em;
+}
+
+/* 左栏导航 */
+.rail nav { gap: 1px; }
+.series-item {
+  padding: 9px 16px;
+  gap: 3px 10px;
+}
+.series-item .nm { font-size: 13px; line-height: 1.35; }
+.series-item .amt { font-size: 12.5px; }
+.series-item .cnt { font-size: 10.5px; margin-top: 1px; }
+
+/* 商品行：封面放大，行距放宽 */
+.prow {
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 14px 2px;
+}
+.prow:hover { background: #fbfbfb; }
+
+.thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 5px;
+  font-size: 18px;
+}
+
+.pname {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  line-height: 1.4;
+}
+.psub {
+  font-size: 11.5px;
+  margin-top: 6px;
+  gap: 9px;
+  line-height: 1.5;
+}
+
+.pprice {
+  gap: 4px;
+  min-width: 108px;
+}
+.pprice .paid {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.pprice .now {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.pprice .delta { font-size: 11.5px; letter-spacing: 0.01em; }
+
+/* 展开层：也放大封面，行距更舒服 */
+.bitem {
+  grid-template-columns: 40px minmax(0, 1fr) auto 84px;
+  gap: 12px;
+  padding: 9px 0;
+  font-size: 12px;
+}
+.bthumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.bitem .bn { line-height: 1.45; }
+
+/* 游戏封面墙 */
+.game-grid {
+  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+  gap: 18px;
+}
+.gname { font-size: 11px; line-height: 1.4; margin-top: 8px; }
+
+/* 图表间距 */
+.chart-grid { row-gap: 38px; }
+.chart { padding: 18px 0 8px; }
+
+/* 提示文字 */
+.hint { font-size: 13px; line-height: 1.75; }
+
+/* 键盘可达性 */
+button:focus-visible,
+.series-item:focus-visible,
+.prow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button { transition: background 0.12s, color 0.12s, border-color 0.12s; }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 1080px) {
   :root { --gutter: 28px; --rail-w: 236px; }
@@ -999,17 +1155,17 @@ textarea { resize: vertical; }
 
   .donut { width: 104px; height: 104px; }
 
-  .prow { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; padding: 10px 0; }
-  .thumb { width: 40px; height: 40px; }
-  .pname { font-size: 12.5px; }
-  .psub { gap: 7px; font-size: 10.5px; }
-  .pprice { min-width: 82px; }
-  .pprice .paid { font-size: 13px; }
+  .prow { grid-template-columns: 46px minmax(0, 1fr) auto; gap: 12px; padding: 12px 0; }
+  .thumb { width: 46px; height: 46px; }
+  .pname { font-size: 13px; }
+  .psub { gap: 7px; font-size: 11px; }
+  .pprice { min-width: 92px; }
+  .pprice .paid { font-size: 14px; }
 
   .bundle-box { margin-left: 0; padding-left: 10px; }
-  .bitem { grid-template-columns: 28px minmax(0, 1fr) 64px; gap: 8px; }
+  .bitem { grid-template-columns: 34px minmax(0, 1fr) 64px; gap: 10px; padding: 8px 0; }
   .bitem .ba { display: none; }
-  .bthumb { width: 28px; height: 28px; }
+  .bthumb { width: 34px; height: 34px; }
 
   .disc-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
   .rank-row { grid-template-columns: minmax(0, 1fr) 44px 68px; }
