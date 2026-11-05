@@ -1,7 +1,8 @@
 {
-  "name": "PSN 收藏档案",
-  "short_name": "收藏档案",
-  "description": "本地优先的 PSN 消费与收藏档案：累计投入、当前价值、系列与捆绑包、价格历史。",
+  "id": "/",
+  "name": "PLAYBILL",
+  "short_name": "PLAYBILL",
+  "description": "本地优先的 PSN 消费与收藏账单：累计投入、当前价值、系列与捆绑包、价格历史。",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -11,6 +12,6 @@
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

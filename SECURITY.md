@@ -1,13 +1,13 @@
-# 安全说明
+﻿# 安全说明
 
 ## 本项目会接触哪些敏感数据
 
 | 数据 | 位置 | 说明 |
 |---|---|---|
-| `npsso` | `server/data.json` | 等同于账号登录凭证，有效期约 2 个月 |
-| `pdccws_p` | `server/data.json` | 商店网页会话 Cookie，有效期约 30 天 |
-| OAuth `access_token` / `refresh_token` | `server/data.json` | 索尼接口令牌 |
-| 交易记录 | `server/data.json` | 每笔订单的商品、金额、时间 |
+| `npsso` | `%APPDATA%\PLAYBILL\data.json` | 等同于账号登录凭证，有效期约 2 个月 |
+| `pdccws_p` | `%APPDATA%\PLAYBILL\data.json` | 商店网页会话 Cookie，有效期约 30 天 |
+| OAuth `access_token` / `refresh_token` | `%APPDATA%\PLAYBILL\data.json` | 索尼接口令牌 |
+| 交易记录 | `%APPDATA%\PLAYBILL\data.json` | 每笔订单的商品、金额、时间 |
 
 以上全部**只写入本地磁盘**，代码中不存在任何上传、上报、遥测逻辑。
 

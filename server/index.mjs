@@ -1,6 +1,7 @@
 ﻿// index.mjs — 本地服务端：托管 PWA 前端 + 提供 PSN 数据 API。
 // 设计原则：令牌与全部数据只保存在本机 data.json，不向任何第三方上传。
 import http from "node:http";
+import https from "node:https";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -13,15 +14,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 数据目录：放在用户配置目录，而不是程序文件夹里。
 // 这样换版本 / 删掉程序文件夹，账号和购买记录都还在。
-// 可用环境变量 PSN_DATA_DIR 覆盖。
-function resolveDataDir() {
-  if (process.env.PSN_DATA_DIR) return process.env.PSN_DATA_DIR;
-  const base =
-    process.platform === "win32"
-      ? process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming")
-      : path.join(os.homedir(), ".config");
-  return path.join(base, "PSNArchive");
+// 可用环境变量 PLAYBILL_DATA_DIR 覆盖（兼容旧的 PSN_DATA_DIR）。
+const APP_DIR_NAME = "PLAYBILL";
+const LEGACY_DIR_NAME = "PSNArchive";
+
+function userBase() {
+  return process.platform === "win32"
+    ? process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming")
+    : path.join(os.homedir(), ".config");
 }
+
+// 老用户升级：把 PSNArchive 整个目录改名过来，数据不丢、也不用重新登录
+function migrateDirName() {
+  try {
+    const base = userBase();
+    const next = path.join(base, APP_DIR_NAME);
+    const prev = path.join(base, LEGACY_DIR_NAME);
+    if (!fs.existsSync(next) && fs.existsSync(prev)) {
+      fs.renameSync(prev, next);
+      console.log("  已迁移数据目录： " + prev + " → " + next);
+    }
+  } catch (e) {
+    console.log("  数据目录迁移失败（继续使用旧目录）：" + e.message);
+  }
+}
+
+function resolveDataDir() {
+  const override = process.env.PLAYBILL_DATA_DIR || process.env.PSN_DATA_DIR;
+  if (override) return override;
+  return path.join(userBase(), APP_DIR_NAME);
+}
+
+if (!process.env.PLAYBILL_DATA_DIR && !process.env.PSN_DATA_DIR) migrateDirName();
 
 let DATA_DIR = resolveDataDir();
 try {
@@ -1111,7 +1135,7 @@ function serveStatic(req, res, url) {
 }
 
 // ---------------- 启动 ----------------
-const server = http.createServer(async (req, res) => {
+const requestHandler = async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   // 允许局域网内 iPhone 访问
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1130,7 +1154,35 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     if (!res.headersSent) json(res, 500, { error: String(e.message || e) });
   }
-});
+};
+
+// 手机要装成 App（PWA），浏览器要求 HTTPS。有证书就用 HTTPS，没有就照旧 HTTP。
+// 证书固定放在配置目录（不受 PLAYBILL_DATA_DIR 影响），重启/换数据目录都不用重签
+const CONFIG_DIR = path.join(userBase(), APP_DIR_NAME);
+const TLS_PFX = process.env.PLAYBILL_TLS_PFX || path.join(CONFIG_DIR, "tls", "playbill.pfx");
+const TLS_PASS_FILE = path.join(CONFIG_DIR, "tls", "pass.txt");
+function tlsPassphrase() {
+  if (process.env.PLAYBILL_TLS_PASS) return process.env.PLAYBILL_TLS_PASS;
+  try {
+    return fs.readFileSync(TLS_PASS_FILE, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+let server = null;
+let scheme = "http";
+if (fs.existsSync(TLS_PFX)) {
+  try {
+    server = https.createServer(
+      { pfx: fs.readFileSync(TLS_PFX), passphrase: tlsPassphrase() },
+      requestHandler,
+    );
+    scheme = "https";
+  } catch (e) {
+    console.log("  ⚠ HTTPS 证书加载失败，回退到 HTTP：" + e.message);
+  }
+}
+if (!server) server = http.createServer(requestHandler);
 
 // 本地单用户工具：抓价格要两三分钟，别让 Node 的默认 5 分钟请求超时把请求掐断
 server.requestTimeout = 0;
@@ -1145,9 +1197,16 @@ server.listen(PORT, HOST, () => {
     }
   }
   console.log("");
-  console.log("  PSN 收藏档案 · 本地服务已启动");
-  console.log("  本机访问： http://localhost:" + PORT);
-  if (lan.length) console.log("  iPhone 访问（同一 Wi-Fi）： " + lan.map((a) => `http://${a}:${PORT}`).join("  "));
+  console.log("  PLAYBILL · 本地服务已启动（" + scheme.toUpperCase() + "）");
+  console.log("  本机访问： " + scheme + "://localhost:" + PORT);
+  if (lan.length) {
+    console.log(
+      "  手机访问（同一 Wi-Fi）： " + lan.map((a) => `${scheme}://${a}:${PORT}`).join("  "),
+    );
+    if (scheme === "http") {
+      console.log("  ⚠ 想装成手机 App（PWA）需要 HTTPS：双击「手机访问(HTTPS).bat」生成证书后重启");
+    }
+  }
   console.log("  数据文件： " + DATA_FILE);
   console.log("  价格历史： " + HISTORY_FILE);
   console.log("");

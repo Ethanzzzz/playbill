@@ -1,5 +1,5 @@
-/* ============================================================
-   PSN 收藏档案 · 瑞士极简
+﻿/* ============================================================
+   PLAYBILL · 瑞士极简
    网格 / 发丝线 / 单一红点 / 无圆角无阴影
    DOM 结构与 app.js 保持完全一致，只换皮
    ============================================================ */
@@ -86,13 +86,13 @@ button.icon-btn:hover { background: var(--wash); color: var(--ink); border-color
 
 .brand { display: flex; align-items: center; gap: 12px; }
 .logo {
-  width: 30px; height: 30px; flex: none;
+  width: 32px; height: 32px; flex: none;
   background: var(--ink);
   color: var(--paper);
   display: grid; place-items: center;
   border-radius: var(--r);
 }
-.logo svg { width: 20px; height: 20px; }
+.logo svg { width: 24px; height: 24px; }
 .brand-text { display: flex; flex-direction: column; gap: 0; }
 .brand h1 {
   font-size: 15px;

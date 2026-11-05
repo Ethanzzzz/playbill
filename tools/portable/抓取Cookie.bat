@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul 2>nul
-title PSN Archive - Capture Cookies
+title PLAYBILL - Capture Cookies
 cd /d "%~dp0"
 
 echo.

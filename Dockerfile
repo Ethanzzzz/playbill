@@ -1,4 +1,4 @@
-# 零依赖，可直接跑
+﻿# 零依赖，可直接跑
 FROM node:20-alpine
 
 WORKDIR /app
@@ -10,10 +10,10 @@ COPY web ./web
 
 ENV PORT=8080
 # 数据目录独立于程序目录，挂载卷即可持久化
-ENV PSN_DATA_DIR=/data
+ENV PLAYBILL_DATA_DIR=/data
 RUN mkdir -p /data
 
 EXPOSE 8080
 
-# 生产环境请挂载 /data 持久卷：docker run -v psn-data:/data ...
+# 生产环境请挂载 /data 持久卷：docker run -v playbill-data:/data ...
 CMD ["node", "server/index.mjs"]

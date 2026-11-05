@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul 2>nul
-title PSN Archive - Browser
+title PLAYBILL - Browser
 cd /d "%~dp0"
 
 echo.
@@ -26,7 +26,12 @@ if not exist "%EDGE%" (
 )
 
 rem 浏览器配置放用户目录，不占程序文件夹，也不会锁住它
-set "PROFILE=%LOCALAPPDATA%\PSNArchive\edge-profile"
+set "PROFILE=%LOCALAPPDATA%\PLAYBILL\edge-profile"
+set "OLDPROFILE=%LOCALAPPDATA%\PSNArchive\edge-profile"
+if not exist "%PROFILE%" if exist "%OLDPROFILE%" (
+  if not exist "%LOCALAPPDATA%\PLAYBILL" mkdir "%LOCALAPPDATA%\PLAYBILL" >nul 2>nul
+  move "%OLDPROFILE%" "%PROFILE%" >nul 2>nul
+)
 if not exist "%PROFILE%" mkdir "%PROFILE%" >nul 2>nul
 
 rem 下面这些参数用来关掉「首次运行」的欢迎页、扩展推荐、默认浏览器提示

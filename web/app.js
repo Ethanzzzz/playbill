@@ -1,4 +1,4 @@
-﻿// app.js — PSN 收藏档案（总览仪表盘 + 系列档案）
+﻿// app.js — PLAYBILL（总览仪表盘 + 系列档案）
 const $ = (id) => document.getElementById(id);
 const OVERVIEW = "__overview__";
 let STATE = { games: [], catalog: [], series: [], settings: { currency: "HKD" } };

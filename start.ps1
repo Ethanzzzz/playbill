@@ -1,4 +1,4 @@
-# 启动 PSN 收藏档案（本地）
+﻿# 启动 PLAYBILL（本地）
 # 用法：powershell -ExecutionPolicy Bypass -File .\start.ps1
 param(
   [int]$Port = 8787

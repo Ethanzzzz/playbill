@@ -1,12 +1,12 @@
-# 技术说明
+﻿# 技术说明
 
-给想改代码或加功能的人。读完能看懂数据怎么流、接口怎么调、哪些坑踩过了。
+给想改代码或加功能的人：数据怎么流、接口怎么调、哪些细节必须注意。
 
 ---
 
 ## 一、数据结构
 
-核心只有一个文件：`server/data.json`。
+核心只有一个文件：`%APPDATA%\PLAYBILL\data.json`（可用 `PLAYBILL_DATA_DIR` 覆盖；首启会把旧的 `PSNArchive` 目录改名过来）。
 
 ```jsonc
 {
@@ -53,7 +53,7 @@
 }
 ```
 
-另一个文件 `server/price-history.json`：
+另一个文件 `price-history.json`（同目录）：
 
 ```jsonc
 {
@@ -190,11 +190,11 @@ build-grants.mjs     # 推断「随包附赠」
 
 ---
 
-## 六、踩过的坑
+## 六、实现要点
 
 1. **名字不能用来匹配商品**
    商店名带语言后缀（`(泰语, 日语…)`）、版本后缀，搜索按热度不按相关度。
-   曾用模糊匹配救回 21 条，出现 FC24→FC26、化身→游戏 等错误，**已全部回滚**。
+   只用 `productId` 命名空间做匹配；名字仅用于展示。
 
 2. **`total` 字段单位是「分」**
    70800 = HK$708，别忘了除以 100。
@@ -215,3 +215,20 @@ build-grants.mjs     # 推断「随包附赠」
 - **新区域**：`psn.mjs` 里写死了 `HK/zh` 和 `zh-Hans-HK`，需要参数化
 - **新图表**：`app.js` 里的 `svgEl()` + 手写 path，不引入图表库
 - **新分类**：改 `index.mjs` 里的 `displayKind()`，同时更新前端的 `KIND_LABEL`
+
+---
+
+## 八、HTTP / HTTPS 两种运行方式
+
+服务端默认 HTTP（`http://localhost:8787`）。当配置目录下存在证书时自动切到 HTTPS：
+
+| 文件 | 说明 |
+|---|---|
+| `%APPDATA%\PLAYBILL\tls\playbill.pfx` | 服务端证书（含私钥） |
+| `%APPDATA%\PLAYBILL\tls\pass.txt` | 上面这个 pfx 的口令 |
+| `%APPDATA%\PLAYBILL\tls\playbill.cer` | 手机安装用（只有公钥） |
+
+- 证书由 `tools/make-cert.ps1` 用 Windows 自带 `New-SelfSignedCertificate` 生成，SAN 覆盖 `localhost`、`127.0.0.1` 与当前所有内网 IPv4（含热点网关），换网络后重跑即可重签。
+- 环境变量：`PLAYBILL_TLS_PFX` / `PLAYBILL_TLS_PASS` 可覆盖路径与口令；`PLAYBILL_DATA_DIR` 只影响数据文件，不影响证书位置。
+- 手机要装成 PWA 必须走 HTTPS（iOS Safari 要求安全上下文）；普通浏览 HTTP 也能用。
+- 若证书存在但加载失败（口令错、文件损坏），服务端会打印警告并回退 HTTP，不会启动失败。
