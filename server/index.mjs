@@ -23,8 +23,14 @@ function resolveDataDir() {
   return path.join(base, "PSNArchive");
 }
 
-const DATA_DIR = resolveDataDir();
-fs.mkdirSync(DATA_DIR, { recursive: true });
+let DATA_DIR = resolveDataDir();
+try {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch (e) {
+  // 极端情况下（权限/只读盘）回退到程序目录，保证能启动
+  console.log("  ⚠ 无法使用用户数据目录，回退到程序目录：" + e.message);
+  DATA_DIR = __dirname;
+}
 const DATA_FILE = path.join(DATA_DIR, "data.json");
 const HISTORY_FILE = path.join(DATA_DIR, "price-history.json");
 
