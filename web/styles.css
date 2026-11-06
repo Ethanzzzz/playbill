@@ -92,7 +92,7 @@ button.icon-btn:hover { background: var(--wash); color: var(--ink); border-color
   display: grid; place-items: center;
   border-radius: var(--r);
 }
-.logo svg { width: 24px; height: 24px; }
+.logo svg { width: 26px; height: 26px; }
 .brand-text { display: flex; flex-direction: column; gap: 0; }
 .brand h1 {
   font-size: 15px;

@@ -1,6 +1,6 @@
 {
   "name": "playbill",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "description": "PLAYBILL — 本地优先的 PSN 存档账单：消费总览、当前价值、系列与捆绑包、价格历史，可装成手机 App。",
